@@ -6,6 +6,20 @@ on:
 jobs:
   core:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: commerce
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d commerce"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -13,6 +27,7 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm run check
+      - run: DATABASE_URL=postgresql://postgres:postgres@localhost:5432/commerce npm run db:smoke
   web:
     runs-on: ubuntu-latest
     defaults:
