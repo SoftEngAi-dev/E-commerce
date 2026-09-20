@@ -10,3 +10,5 @@ CREATE INDEX IF NOT EXISTS products_public_idx ON products(status,stock,publishe
 CREATE INDEX IF NOT EXISTS order_items_order_idx ON order_items(order_id);
 
 ALTER TABLE products ADD COLUMN IF NOT EXISTS image_urls TEXT[] NOT NULL DEFAULT '{}';
+
+ALTER TABLE products ADD COLUMN IF NOT EXISTS category TEXT;
