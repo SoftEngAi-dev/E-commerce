@@ -67,3 +67,6 @@ export * from "./domain/suppliers.js";
 export * from "./application/supplier-import.js";
 export * from "./application/acquisition.js";
 export * from "./persistence/connectors-pg.js";
+export * from "./application/support-ai.js";
+export * from "./application/content-ai.js";
+export * from "./application/acquisition-metrics.js";
