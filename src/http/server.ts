@@ -1,6 +1,151 @@
-import {createServer,IncomingMessage,ServerResponse} from "node:http";import{randomUUID}from"node:crypto";import{loadConfig}from"../config.js";import{authenticateApiKey}from"../security/admin-auth.js";import{verifyHmac,ReplayGuard}from"../security/hmac.js";
-const config=loadConfig();const replay=new ReplayGuard();
-function json(res:ServerResponse,status:number,body:unknown,id:string){res.statusCode=status;res.setHeader("content-type","application/json");res.setHeader("x-request-id",id);res.end(JSON.stringify(body))}
-async function body(req:IncomingMessage){const c:Buffer[]=[];for await(const x of req)c.push(Buffer.from(x));return Buffer.concat(c).toString()}
-export const server=createServer(async(req,res)=>{const id=randomUUID();try{if(req.method==="GET"&&req.url==="/health")return json(res,200,{ok:true,service:"autonomous-ecommerce"},id);if(req.method==="GET"&&req.url==="/ready")return json(res,200,{ok:true,dependencies:{config:true}},id);if(req.method==="POST"&&req.url==="/webhooks/generic"){const b=await body(req),s=req.headers["x-webhook-signature"],e=req.headers["x-webhook-event-id"];if(typeof s!=="string"||typeof e!=="string"||!verifyHmac(b,s,config.WEBHOOK_SECRET)||!replay.accept(e))return json(res,401,{error:"Invalid webhook"},id);return json(res,202,{accepted:true,eventId:e},id)}if(req.method==="GET"&&req.url==="/admin/ping"){const k=req.headers["x-admin-api-key"];const p=authenticateApiKey(typeof k==="string"?k:undefined,config.ADMIN_API_KEY);if(!p)return json(res,401,{error:"Unauthorized"},id);return json(res,200,{ok:true,role:p.role},id)}return json(res,404,{error:"Not found"},id)}catch(e){return json(res,500,{error:e instanceof Error?e.message:"Internal error"},id)}});
-if(process.env.NODE_ENV!=="test")server.listen(config.PORT);
+import { createServer, IncomingMessage, ServerResponse } from "node:http";
+import { randomUUID } from "node:crypto";
+import { z } from "zod";
+import { loadConfig, type AppConfig } from "../config.js";
+import { authenticateApiKey } from "../security/admin-auth.js";
+import { signHmac, verifyHmac, ReplayGuard } from "../security/hmac.js";
+import { FixedWindowLimiter } from "./rate-limit.js";
+import { PostgresDatabase } from "../persistence/postgres.js";
+import { getProduct, listPublishedProducts } from "../persistence/product-pg.js";
+import { createOrder, getOrder, getOrderVersion, transitionPersistedOrder, upsertCustomer } from "../persistence/order-pg.js";
+import { recordWebhookEvent, markWebhookProcessed } from "../persistence/webhook-pg.js";
+import { quotePrice } from "../domain/pricing.js";
+
+const checkoutSchema=z.object({
+  lines:z.array(z.object({productId:z.string().uuid(),quantity:z.number().int().positive().max(99)})).min(1).max(50)
+});
+const orderSchema=checkoutSchema.extend({
+  email:z.string().email().max(320),
+  country:z.string().length(2),
+  shippingAddress:z.record(z.string(),z.unknown()).default({})
+});
+const paymentEventSchema=z.object({
+  type:z.enum(["payment.succeeded","payment.failed"]),
+  orderId:z.string().uuid(),
+  paymentId:z.string().min(1).max(200)
+});
+
+async function readBody(req:IncomingMessage,maxBytes=1_000_000){
+  const chunks:Buffer[]=[];let size=0;
+  for await(const chunk of req){
+    const b=Buffer.from(chunk);size+=b.length;if(size>maxBytes)throw new Error("Request body too large");chunks.push(b);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+function json(res:ServerResponse,status:number,body:unknown,id:string){
+  res.statusCode=status;res.setHeader("content-type","application/json; charset=utf-8");res.setHeader("cache-control","no-store");res.setHeader("x-request-id",id);res.end(JSON.stringify(body));
+}
+function clientKey(req:IncomingMessage){return req.socket.remoteAddress??"unknown"}
+function parseJson(text:string){try{return JSON.parse(text) as unknown}catch{throw new Error("Invalid JSON")}}
+
+export function createCommerceServer(config:AppConfig,db:PostgresDatabase){
+  const limiter=new FixedWindowLimiter(120,60_000);
+  const replay=new ReplayGuard();
+  return createServer(async(req,res)=>{
+    const requestId=randomUUID();
+    try{
+      if(!limiter.allow(clientKey(req)))return json(res,429,{error:"Rate limit exceeded"},requestId);
+      const url=new URL(req.url??"/","http://localhost");
+
+      if(req.method==="GET"&&url.pathname==="/health")
+        return json(res,200,{ok:true,service:"autonomous-ecommerce"},requestId);
+
+      if(req.method==="GET"&&url.pathname==="/ready"){
+        await db.query("SELECT 1");
+        return json(res,200,{ok:true,dependencies:{postgres:true}},requestId);
+      }
+
+      if(req.method==="GET"&&url.pathname==="/api/products"){
+        const limit=Number(url.searchParams.get("limit")??"24");
+        const offset=Number(url.searchParams.get("offset")??"0");
+        const products=await listPublishedProducts(db,limit,offset);
+        return json(res,200,{items:products},requestId);
+      }
+
+      if(req.method==="GET"&&url.pathname.startsWith("/api/products/")){
+        const id=url.pathname.slice("/api/products/".length);
+        const p=await getProduct(db,id);
+        if(!p||p.status!=="published")return json(res,404,{error:"Product not found"},requestId);
+        const q=quotePrice({supplierCost:p.cost,shippingCost:p.shippingCost,feeRate:p.feeRate,targetMarginRate:p.targetMarginRate});
+        return json(res,200,{product:{...p,price:q.price},pricing:{currency:p.currency,price:q.price}},requestId);
+      }
+
+      if(req.method==="POST"&&url.pathname==="/api/quote"){
+        const parsed=checkoutSchema.parse(parseJson(await readBody(req)));
+        const lines=[] as Array<Record<string,unknown>>;let total=0;let margin=0;let currency:string|undefined;
+        for(const line of parsed.lines){
+          const p=await getProduct(db,line.productId);
+          if(!p||p.status!=="published"||p.stock<line.quantity)throw new Error("Product unavailable: "+line.productId);
+          if(currency&&currency!==p.currency)throw new Error("Mixed currencies are not supported in one quote");
+          currency=p.currency;
+          const q=quotePrice({supplierCost:p.cost,shippingCost:p.shippingCost,feeRate:p.feeRate,targetMarginRate:p.targetMarginRate});
+          total+=q.price*line.quantity;margin+=q.grossMargin*line.quantity;
+          lines.push({productId:p.id,title:p.title,quantity:line.quantity,unitPrice:q.price,subtotal:q.price*line.quantity});
+        }
+        return json(res,200,{currency,total,grossMarginRate:total?margin/total:0,lines},requestId);
+      }
+
+      if(req.method==="POST"&&url.pathname==="/api/orders"){
+        const idempotencyKey=req.headers["idempotency-key"];
+        if(typeof idempotencyKey!=="string"||idempotencyKey.length<16||idempotencyKey.length>200)
+          return json(res,400,{error:"Idempotency-Key header is required"},requestId);
+        const parsed=orderSchema.parse(parseJson(await readBody(req)));
+        const grouped=[] as Array<{productId:string;externalId:string;title:string;quantity:number;unitPrice:number;unitCost:number;shippingCost:number}>;
+        let subtotal=0;let currency:string|undefined;
+        for(const line of parsed.lines){
+          const p=await getProduct(db,line.productId);
+          if(!p||p.status!=="published"||p.stock<line.quantity)throw new Error("Product unavailable: "+line.productId);
+          if(currency&&currency!==p.currency)throw new Error("Mixed currencies are not supported in one order");
+          currency=p.currency;
+          const q=quotePrice({supplierCost:p.cost,shippingCost:p.shippingCost,feeRate:p.feeRate,targetMarginRate:p.targetMarginRate});
+          subtotal+=q.price*line.quantity;
+          grouped.push({productId:p.id,externalId:p.externalId,title:p.title,quantity:line.quantity,unitPrice:q.price,unitCost:p.cost,shippingCost:p.shippingCost});
+        }
+        const customerId=await upsertCustomer(db,parsed.email,parsed.country);
+        if(!customerId)throw new Error("Customer creation failed");
+        const order=await createOrder(db,{id:randomUUID(),currency:currency??"USD",subtotal,shipping:0,total:subtotal,idempotencyKey,customerId,shippingAddress:parsed.shippingAddress,lines:grouped});
+        return json(res,201,{order},requestId);
+      }
+
+      if(req.method==="GET"&&url.pathname.startsWith("/api/orders/")){
+        const orderId=url.pathname.slice("/api/orders/".length);const order=await getOrder(db,orderId);
+        if(!order)return json(res,404,{error:"Order not found"},requestId);
+        return json(res,200,{order},requestId);
+      }
+
+      if(req.method==="POST"&&url.pathname==="/webhooks/generic"){
+        const raw=await readBody(req);const sig=req.headers["x-webhook-signature"],eventId=req.headers["x-webhook-event-id"],provider=req.headers["x-webhook-provider"]??"generic";
+        if(typeof sig!=="string"||typeof eventId!=="string")return json(res,401,{error:"Invalid webhook"},requestId);
+        if(!verifyHmac(raw,sig,config.WEBHOOK_SECRET)||!replay.accept(eventId))return json(res,401,{error:"Invalid webhook"},requestId);
+        if(!(await recordWebhookEvent(db,{eventId,provider:String(provider),signatureValid:true,rawPayload:raw})))return json(res,202,{accepted:true,eventId,duplicate:true},requestId);
+        const event=paymentEventSchema.parse(parseJson(raw));const current=await getOrderVersion(db,event.orderId);
+        if(current){
+          const target=event.type==="payment.succeeded"?"paid":"cancelled";
+          await transitionPersistedOrder(db,event.orderId,target,current.version,event.paymentId);
+          await markWebhookProcessed(db,eventId);
+        }
+        return json(res,202,{accepted:true,eventId},requestId);
+      }
+
+      if(req.method==="GET"&&url.pathname==="/admin/ping"){
+        const key=req.headers["x-admin-api-key"];const principal=authenticateApiKey(typeof key==="string"?key:undefined,config.ADMIN_API_KEY);
+        if(!principal)return json(res,401,{error:"Unauthorized"},requestId);
+        return json(res,200,{ok:true,role:principal.role},requestId);
+      }
+
+      return json(res,404,{error:"Not found"},requestId);
+    }catch(error){
+      const status=error instanceof z.ZodError?400:500;
+      return json(res,status,{error:error instanceof Error?error.message:"Internal error"},requestId);
+    }
+  });
+}
+
+export function startCommerceServer(config=loadConfig()){
+  const db=new PostgresDatabase(config.DATABASE_URL);
+  const server=createCommerceServer(config,db);
+  server.listen(config.PORT);
+  return {server,db};
+}
+
+if(process.env.NODE_ENV!=="test")startCommerceServer();
