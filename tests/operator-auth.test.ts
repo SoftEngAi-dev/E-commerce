@@ -1,0 +1,3 @@
+import test from"node:test";import assert from"node:assert/strict";import{hashPassword,verifyPassword}from"../src/security/password.js";import{createSessionToken,hashSessionToken,sessionCookie}from"../src/security/session.js";
+test("password hashing verifies and rejects wrong passwords",async()=>{const h=await hashPassword("a-very-secure-password");assert.equal(await verifyPassword("a-very-secure-password",h),true);assert.equal(await verifyPassword("wrong-password",h),false)});
+test("session tokens are random and hashed",()=>{const a=createSessionToken(),b=createSessionToken();assert.notEqual(a,b);assert.notEqual(hashSessionToken(a),hashSessionToken(b));assert.match(sessionCookie(a,3600,false),/HttpOnly/)});
