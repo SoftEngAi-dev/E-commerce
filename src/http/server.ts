@@ -207,7 +207,7 @@ export function createCommerceServer(config:AppConfig,db:PostgresDatabase,deps:{
             market:z.string().length(2),
             channel:z.enum(["store","marketplace","social"]),
             claims:z.array(z.string()).default([]),
-            signals:z.object({
+            supplierPolicy:z.object({dropshippingAllowed:z.boolean().optional(),marketplaceAllowed:z.boolean().optional(),adModificationAllowed:z.boolean().optional(),internationalSalesAllowed:z.boolean().optional(),restrictedTerritories:z.array(z.string()).optional()}).default({}),\n            signals:z.object({
               demand:z.number().min(0).max(100),
               margin:z.number().min(0).max(100),
               competition:z.number().min(0).max(100),
