@@ -11,6 +11,7 @@ import { ingestCatalogCandidate } from "../application/catalog-intelligence.js";
 import { getOperationalSummary, getProductPerformance } from "../application/analytics.js";
 import { getMarketPolicy, isCategoryAllowed, isChannelAllowedForMarket } from "../application/market-policy.js";
 import { PostgresAuditSink } from "../persistence/audit-pg.js";
+import { reviewWithAI } from "../application/ai-review.js";
 import { createOrder, getOrder, getOrderVersion, transitionPersistedOrder, upsertCustomer } from "../persistence/order-pg.js";
 import { recordWebhookEvent, markWebhookProcessed } from "../persistence/webhook-pg.js";
 import { quotePrice } from "../domain/pricing.js";
@@ -188,6 +189,13 @@ export function createCommerceServer(config:AppConfig,db:PostgresDatabase,deps:{
         if(req.method==="GET"&&url.pathname==="/internal/analytics/products"){
           const limit=Number(url.searchParams.get("limit")??"50");
           return json(res,200,{items:await getProductPerformance(db,limit)},requestId);
+        }
+
+        if(req.method==="POST"&&url.pathname==="/internal/ai/review"){
+          if(!config.AI_BASE_URL||!config.AI_MODEL)return json(res,503,{error:"AI provider is not configured"},requestId);
+          const input=z.object({metrics:z.record(z.string(),z.unknown()),agent:z.string().max(100).optional()}).parse(parseJson(await readBody(req)));
+          const review=await reviewWithAI(db,input,{id:config.AI_PROVIDER_ID,baseUrl:config.AI_BASE_URL,model:config.AI_MODEL,token:config.AI_TOKEN});
+          return json(res,200,review,requestId);
         }
 
         if(req.method==="POST"&&url.pathname==="/internal/catalog/ingest"){
