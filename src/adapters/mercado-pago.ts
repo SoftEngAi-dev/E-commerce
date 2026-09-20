@@ -46,8 +46,9 @@ export class MercadoPagoCheckoutProProvider implements PaymentProvider {
     return {externalId:data.id,checkoutUrl:data.checkout_url};
   }
 
-  async refund(input:{externalPaymentId:string;amount?:number;idempotencyKey:string}){
-    const body=input.amount===undefined?undefined:JSON.stringify({transactions:[{amount:input.amount.toFixed(2)}]});
+  async refund(input:{externalPaymentId:string;amount?:number;transactionId?:string;idempotencyKey:string}){
+    if(input.amount!==undefined&&!input.transactionId)throw new Error("Partial Mercado Pago refunds require transactionId");
+    const body=input.amount===undefined?undefined:JSON.stringify({transactions:[{id:input.transactionId,amount:input.amount.toFixed(2)}]});
     const response=await fetch(this.base+"/v1/orders/"+encodeURIComponent(input.externalPaymentId)+"/refund",{
       method:"POST",
       headers:{"accept":"application/json","content-type":"application/json","authorization":"Bearer "+this.config.accessToken,"x-idempotency-key":input.idempotencyKey},
@@ -56,3 +57,13 @@ export class MercadoPagoCheckoutProProvider implements PaymentProvider {
     if(!response.ok)throw new Error("Mercado Pago refund failed: "+response.status);
   }
 }
+
+  async getStatus(externalPaymentId:string){
+    const response=await fetch(this.base+"/v1/orders/"+encodeURIComponent(externalPaymentId),{
+      headers:{accept:"application/json",authorization:"Bearer "+this.config.accessToken}
+    });
+    if(!response.ok)throw new Error("Mercado Pago order lookup failed: "+response.status);
+    const data=(await response.json()) as {status?:string;currency?:string;total_amount?:string;total_paid_amount?:string};
+    if(!data.status)throw new Error("Mercado Pago response has no status");
+    return {status:data.status,currency:data.currency,amount:data.total_paid_amount?Number(data.total_paid_amount):data.total_amount?Number(data.total_amount):undefined};
+  }
