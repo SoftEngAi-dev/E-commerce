@@ -1,0 +1,9 @@
+{
+  "name":"Commerce — Order Operations",
+  "nodes":[
+    {"name":"Order Event","type":"n8n-nodes-base.webhook","typeVersion":2,"position":[0,0],"parameters":{"path":"commerce-order-event","httpMethod":"POST","responseMode":"onReceived"}},
+    {"name":"Route Status","type":"n8n-nodes-base.switch","typeVersion":3,"position":[240,0],"parameters":{"dataType":"string","value1":"={{$json.status}}","rules":[{"operation":"equal","value2":"paid"},{"operation":"equal","value2":"submitted"},{"operation":"equal","value2":"shipped"},{"operation":"equal","value2":"delivered"},{"operation":"equal","value2":"refunded"}]}},
+    {"name":"Notify/Automate","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[500,0],"parameters":{"method":"POST","url":"={{$env.AUTOMATION_CALLBACK_URL}}","sendBody":true,"jsonBody":"={{$json}}"}}
+  ],
+  "connections":{"Order Event":{"main":[[{"node":"Route Status","type":"main","index":0}]]},"Route Status":{"main":[[{"node":"Notify/Automate","type":"main","index":0}]]}}
+}
