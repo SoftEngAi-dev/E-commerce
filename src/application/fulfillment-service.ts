@@ -2,6 +2,7 @@ import type { FulfillmentProvider } from "../domain/providers.js";
 import type { PostgresDatabase } from "../persistence/postgres.js";
 import { getOrder } from "../persistence/order-pg.js";
 import { transitionPersistedOrder } from "../persistence/order-pg.js";
+import { enqueueJob } from "../persistence/job-queue-pg.js";
 
 export async function submitPaidOrder(
   db:PostgresDatabase,
@@ -26,5 +27,5 @@ export async function submitPaidOrder(
   const current=await db.query<{version:number}>("SELECT version FROM orders WHERE id=$1",[orderId]);
   const version=current.rows[0]?.version;
   if(version===undefined)throw new Error("Order version not found");
-  return transitionPersistedOrder(db,orderId,"submitted",version,undefined,fulfillment.externalId);
+  const transitioned=await transitionPersistedOrder(db,orderId,"submitted",version,undefined,fulfillment.externalId);\n  await enqueueJob(db,{type:"fulfillment.tracking.sync",payload:{externalFulfillmentId:fulfillment.externalId},maxAttempts:20,availableAt:new Date(Date.now()+60000)});\n  return transitioned;
 }
