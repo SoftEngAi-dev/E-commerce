@@ -1,0 +1,18 @@
+{
+  "name":"Commerce — AI Review Loop",
+  "nodes":[
+    {"name":"Schedule","type":"n8n-nodes-base.scheduleTrigger","typeVersion":1,"position":[0,0],"parameters":{"rule":{"interval":[{"field":"hours","hoursInterval":12}]}}},
+    {"name":"Fetch Metrics","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[220,0],"parameters":{"method":"GET","url":"={{$env.COMMERCE_API_URL}}/internal/analytics/summary","sendHeaders":true,"headerParameters":{"parameters":[{"name":"x-internal-service-key","value":"={{$env.INTERNAL_SERVICE_KEY}}"}]},"options":{"timeout":30000}}},
+    {"name":"AI Review","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[440,0],"parameters":{"method":"POST","url":"={{$env.COMMERCE_API_URL}}/internal/ai/review","sendHeaders":true,"headerParameters":{"parameters":[{"name":"x-internal-service-key","value":"={{$env.INTERNAL_SERVICE_KEY}}"}]},"sendBody":true,"contentType":"json","jsonBody":"={{ {metrics:$json.summary} }}","options":{"timeout":60000}}},
+    {"name":"Risk Gate","type":"n8n-nodes-base.switch","typeVersion":3,"position":[660,0],"parameters":{"dataType":"string","value1":"={{$json.status}}","rules":[{"operation":"equal","value2":"proposed"},{"operation":"equal","value2":"approval_required"}]}},
+    {"name":"Build Audit","type":"n8n-nodes-base.code","typeVersion":2,"position":[880,0],"parameters":{"jsCode":"const r=$json; return [{json:{actor:'ai-orchestrator',action:r.proposal?.action??'ai.review',entityType:'agent-run',entityId:r.proposal?.action,risk:r.proposal?.risk??'medium',evidence:r.proposal?.evidence??[],metadata:{status:r.status,reason:r.proposal?.reason??r.reason??null,model:r.model??null}}}];"}},
+    {"name":"Audit","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[1100,0],"parameters":{"method":"POST","url":"={{$env.COMMERCE_API_URL}}/internal/audit/events","sendHeaders":true,"headerParameters":{"parameters":[{"name":"x-internal-service-key","value":"={{$env.INTERNAL_SERVICE_KEY}}"}]},"sendBody":true,"contentType":"json","jsonBody":"={{$json}}","options":{"timeout":30000}}}
+  ],
+  "connections":{
+    "Schedule":{"main":[[{"node":"Fetch Metrics","type":"main","index":0}]]},
+    "Fetch Metrics":{"main":[[{"node":"AI Review","type":"main","index":0}]]},
+    "AI Review":{"main":[[{"node":"Risk Gate","type":"main","index":0}]]},
+    "Risk Gate":{"main":[[{"node":"Build Audit","type":"main","index":0}],[{"node":"Build Audit","type":"main","index":0}]]},
+    "Build Audit":{"main":[[{"node":"Audit","type":"main","index":0}]]}
+  }
+}

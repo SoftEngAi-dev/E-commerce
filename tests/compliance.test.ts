@@ -1,0 +1,3 @@
+import test from"node:test";import assert from"node:assert/strict";import{checkCompliance}from"../src/index.js";
+test("unknown supplier authorization does not permit autonomous publication",()=>{const r=checkCompliance({policy:{},market:"UY",claims:[],channel:"store"});assert.equal(r.allowed,false);assert.ok(r.reasons.includes("supplier-dropshipping-not-verified"));assert.ok(r.reasons.includes("international-sales-not-verified"))});
+test("explicit supplier authorization can pass store compliance",()=>{const r=checkCompliance({policy:{dropshippingAllowed:true,internationalSalesAllowed:true},market:"UY",claims:[],channel:"store"});assert.equal(r.allowed,true)});

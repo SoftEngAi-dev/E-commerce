@@ -2,28 +2,49 @@
 
 Modular commerce core for international dropshipping, multi-provider commerce and AI-assisted autonomous operations.
 
-## v1.4 Production Foundation
+## Current release
 
-- strict TypeScript domain core
-- deterministic server-side pricing
-- explicit order state machine
-- PostgreSQL migrations for commerce state
-- inventory reservation model
-- retryable jobs and dead-letter behavior
-- idempotency and audit contracts
-- HMAC webhook verification and replay protection
-- admin API-key boundary
-- supplier/payment/fulfillment provider ports
-- Docker and CI foundation
-- n8n-compatible event schema
-- health and readiness endpoints
+**v1.8 commerce + autonomy foundation**
 
-## Design
+- TypeScript domain core with deterministic pricing and order state machine
+- PostgreSQL persistence, idempotency, outbox and durable jobs
+- Inventory reservation, expiry, retries and worker recovery
+- Provider-neutral payments and fulfillment
+- Mercado Pago Orders API adapter
+- Verified webhook processing with durable synchronization jobs
+- Fulfillment and tracking workers
+- Product intelligence, supplier compliance and market policy gates
+- Persistent knowledge and agent memory
+- Configurable OpenAI-compatible/local AI provider
+- Evidence-backed AI review and autonomous risk gates
+- Analytics, recommendations and learning outcomes
+- Multi-store/multi-market persistence
+- Optional tax and FX provider ports
+- Authenticated internal endpoints for n8n
+- Next.js storefront and operations UI
+- Docker, Docker Compose, CI and OpenAPI
 
-The commerce core is provider-agnostic. Supplier, payment, fulfillment, tax, FX and AI implementations can be replaced without rewriting domain logic.
+## Core loop
 
-Autonomous actions are evidence-backed and pass through risk gates. High-risk or irreversible operations remain explicitly gated.
+    supplier -> normalize -> score -> compliance -> publish
+            -> quote -> reserve -> pay -> verify
+            -> fulfill -> track -> measure -> learn
+            -> propose -> risk gate -> execute
+
+The core is provider-agnostic. Supplier, payment, fulfillment, tax, FX and AI implementations are replaceable adapters.
+
+Autonomous actions are evidence-backed and policy-gated. Financial, regulated, destructive or irreversible operations remain explicitly controlled.
+
+## Local start
+
+See `docs/SETUP.md` or run `scripts/start-dev.ps1` on Windows.
 
 ## Roadmap
 
-v1.4 foundation -> v1.5 real provider adapters -> v1.6 storefront/admin -> v1.7 AI orchestration -> v1.8 international expansion and learning loops.
+- Production supplier connectors and authorization verification
+- Real tax/FX provider implementations per market
+- Operator identity and approval UI
+- Acquisition-channel adapters and attribution
+- Conversion/cohort analytics
+- Backup/disaster recovery
+- Sandbox-to-production certification for each payment and fulfillment provider

@@ -3,7 +3,7 @@ import type { OrderState } from "../domain/order.js";
 import { canTransition } from "../domain/order.js";
 
 export interface OrderLineInput { productId:string; externalId:string; title:string; quantity:number; unitPrice:number; unitCost:number; shippingCost:number }
-export interface CreateOrderInput { id:string; currency:string; subtotal:number; shipping:number; total:number; idempotencyKey:string; requestHash:string; customerId:string; shippingAddress:Record<string,unknown>; lines:OrderLineInput[] }
+export interface CreateOrderInput { id:string; storeId?:string; currency:string; subtotal:number; shipping:number; taxAmount?:number; taxProvider?:string; fxRate?:number; fxProvider?:string; pricingSnapshot?:Record<string,unknown>; total:number; idempotencyKey:string; requestHash:string; customerId:string; shippingAddress:Record<string,unknown>; lines:OrderLineInput[] }
 
 export interface PublicOrderRow {
   id:string;
@@ -14,6 +14,7 @@ export interface PublicOrderRow {
   total:number;
   version:number;
   externalPaymentId?:string;
+  storeId?:string;
   customerId?:string;
   shippingAddress:Record<string,unknown>;
   createdAt:Date;
@@ -49,8 +50,8 @@ export async function createOrder(db:PostgresDatabase,input:CreateOrderInput){
     }
 
     await c.query(
-      "INSERT INTO orders(id,status,currency,subtotal,shipping,total,idempotency_key,request_hash,customer_id,shipping_address) VALUES($1,'pending_payment',$2,$3,$4,$5,$6,$7,$8,$9)",
-      [input.id,input.currency,input.subtotal,input.shipping,input.total,input.idempotencyKey,input.requestHash,input.customerId,input.shippingAddress]
+      "INSERT INTO orders(id,status,store_id,currency,subtotal,shipping,tax_amount,tax_provider,fx_rate,fx_provider,pricing_snapshot,total,idempotency_key,request_hash,customer_id,shipping_address) VALUES($1,'pending_payment',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)",
+      [input.id,input.storeId??null,input.currency,input.subtotal,input.shipping,input.taxAmount??0,input.taxProvider??null,input.fxRate??null,input.fxProvider??null,input.pricingSnapshot??{},input.total,input.idempotencyKey,input.requestHash,input.customerId,input.shippingAddress]
     );
 
     for(const line of input.lines){
@@ -77,7 +78,7 @@ export async function getOrderVersion(db:PostgresDatabase,id:string){
   return r.rows[0];
 }
 
-export async function transitionPersistedOrder(db:PostgresDatabase,id:string,to:OrderState,expectedVersion:number,externalPaymentId?:string){
+export async function transitionPersistedOrder(db:PostgresDatabase,id:string,to:OrderState,expectedVersion:number,externalPaymentId?:string,externalFulfillmentId?:string){
   return db.transaction(async c=>{
     const r=await c.query<{status:OrderState;version:number}>(
       "SELECT status,version FROM orders WHERE id=$1 FOR UPDATE",
@@ -124,8 +125,8 @@ export async function transitionPersistedOrder(db:PostgresDatabase,id:string,to:
     }
 
     await c.query(
-      "UPDATE orders SET status=$1,version=version+1,external_payment_id=COALESCE($3,external_payment_id),updated_at=now() WHERE id=$2",
-      [to,id,externalPaymentId??null]
+      "UPDATE orders SET status=$1,version=version+1,external_payment_id=COALESCE($3,external_payment_id),external_fulfillment_id=COALESCE($4,external_fulfillment_id),updated_at=now() WHERE id=$2",
+      [to,id,externalPaymentId??null,externalFulfillmentId??null]
     );
     await c.query(
       "INSERT INTO outbox_events(topic,aggregate_type,aggregate_id,payload) VALUES($1,$2,$3,$4)",
@@ -137,7 +138,7 @@ export async function transitionPersistedOrder(db:PostgresDatabase,id:string,to:
 
 export async function getOrder(db:PostgresDatabase,id:string){
   const order=await db.query<PublicOrderRow>(
-    'SELECT id,status,currency,subtotal,shipping,total,version,external_payment_id AS "externalPaymentId",customer_id AS "customerId",shipping_address AS "shippingAddress",created_at AS "createdAt",updated_at AS "updatedAt" FROM orders WHERE id=$1',
+    'SELECT id,status,store_id AS "storeId",currency,subtotal,shipping,tax_amount AS "taxAmount",tax_provider AS "taxProvider",fx_rate AS "fxRate",fx_provider AS "fxProvider",pricing_snapshot AS "pricingSnapshot",total,version,external_payment_id AS "externalPaymentId",customer_id AS "customerId",shipping_address AS "shippingAddress",created_at AS "createdAt",updated_at AS "updatedAt" FROM orders WHERE id=$1',
     [id]
   );
   const row=order.rows[0];
@@ -147,4 +148,10 @@ export async function getOrder(db:PostgresDatabase,id:string){
     [id]
   );
   return {...row,items:items.rows};
+}
+
+
+export async function findOrderByExternalFulfillmentId(db:PostgresDatabase,externalFulfillmentId:string){
+  const r=await db.query<{id:string}>("SELECT id FROM orders WHERE external_fulfillment_id=$1",[externalFulfillmentId]);
+  return r.rows[0]?.id;
 }
