@@ -1,0 +1,2 @@
+import test from "node:test";import assert from "node:assert/strict";import{reserveStock,releaseStock,commitReservation}from"../src/application/inventory.js";
+test("reservation can be released or committed",()=>{const i={sku:"SKU-1",available:10,reserved:0};const r=reserveStock(i,3);assert.deepEqual(r,{sku:"SKU-1",available:7,reserved:3});assert.deepEqual(releaseStock(r,3),i);assert.deepEqual(commitReservation(r,2),{sku:"SKU-1",available:7,reserved:1})});

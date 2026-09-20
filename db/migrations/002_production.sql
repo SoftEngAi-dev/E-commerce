@@ -1,0 +1,11 @@
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS idempotency_key TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS orders_idempotency_key_uq ON orders(idempotency_key) WHERE idempotency_key IS NOT NULL;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS reserved_stock INTEGER NOT NULL DEFAULT 0 CHECK (reserved_stock >= 0);
+CREATE INDEX IF NOT EXISTS products_source_status_idx ON products(source,status);
+CREATE TABLE IF NOT EXISTS inventory_reservations(id UUID PRIMARY KEY DEFAULT gen_random_uuid(),order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,product_id UUID NOT NULL REFERENCES products(id),quantity INTEGER NOT NULL CHECK(quantity>0),status TEXT NOT NULL DEFAULT 'reserved',expires_at TIMESTAMPTZ NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT now(),UNIQUE(order_id,product_id));
+CREATE INDEX IF NOT EXISTS inventory_reservations_expiry_idx ON inventory_reservations(status,expires_at);
+CREATE TABLE IF NOT EXISTS webhook_events(event_id TEXT PRIMARY KEY,provider TEXT NOT NULL,signature_valid BOOLEAN NOT NULL,received_at TIMESTAMPTZ NOT NULL DEFAULT now(),payload_hash TEXT NOT NULL,processed_at TIMESTAMPTZ);
+CREATE TABLE IF NOT EXISTS outbox_events(id UUID PRIMARY KEY DEFAULT gen_random_uuid(),topic TEXT NOT NULL,aggregate_type TEXT NOT NULL,aggregate_id TEXT NOT NULL,payload JSONB NOT NULL,published_at TIMESTAMPTZ,created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS outbox_unpublished_idx ON outbox_events(published_at,created_at);
+CREATE TABLE IF NOT EXISTS provider_accounts(id UUID PRIMARY KEY DEFAULT gen_random_uuid(),provider_type TEXT NOT NULL,provider_id TEXT NOT NULL,market TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'active',metadata JSONB NOT NULL DEFAULT '{}',created_at TIMESTAMPTZ NOT NULL DEFAULT now(),UNIQUE(provider_type,provider_id,market));
