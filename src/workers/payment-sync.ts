@@ -29,7 +29,7 @@ export async function runPaymentWorker(){
       if(result.status==="paid"&&config.FULFILLMENT_BASE_URL&&config.FULFILLMENT_TOKEN){
         await enqueueJob(db,{type:"order.fulfillment",payload:{orderId:result.orderId,idempotencyKey:"fulfill-"+result.orderId}});
       }
-    }
+    }]
   ]));
 
   try{await worker.runOnce(10)}finally{await db.close()}
