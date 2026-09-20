@@ -15,6 +15,10 @@ const schema=z.object({
   AI_TOKEN:z.string().min(1).optional(),
   AI_PROVIDER_ID:z.string().min(1).default("local-ai"),
   CORS_ORIGINS:z.string().default(""),
+  TAX_BASE_URL:z.string().url().optional(),
+  TAX_TOKEN:z.string().min(1).optional(),
+  FX_BASE_URL:z.string().url().optional(),
+  FX_TOKEN:z.string().min(1).optional(),
   MERCADO_PAGO_ACCESS_TOKEN:z.string().min(1).optional(),
   CHECKOUT_SUCCESS_URL:z.string().url().optional(),
   CHECKOUT_FAILURE_URL:z.string().url().optional(),
@@ -31,5 +35,7 @@ export function loadConfig(env:NodeJS.ProcessEnv=process.env):AppConfig{
   if(config.MERCADO_PAGO_ACCESS_TOKEN&&(!config.CHECKOUT_SUCCESS_URL||!config.CHECKOUT_FAILURE_URL||!config.CHECKOUT_PENDING_URL))throw new Error("Checkout return URLs are required when Mercado Pago is enabled");
   if(config.MERCADO_PAGO_ACCESS_TOKEN&&!config.MERCADO_PAGO_WEBHOOK_SECRET)throw new Error("MERCADO_PAGO_WEBHOOK_SECRET is required when Mercado Pago is enabled");
   if((config.FULFILLMENT_BASE_URL&&!config.FULFILLMENT_TOKEN)||(config.FULFILLMENT_TOKEN&&!config.FULFILLMENT_BASE_URL))throw new Error("FULFILLMENT_BASE_URL and FULFILLMENT_TOKEN must be configured together");
+  if((config.TAX_BASE_URL&&!config.TAX_TOKEN)||(config.TAX_TOKEN&&!config.TAX_BASE_URL))throw new Error("TAX_BASE_URL and TAX_TOKEN must be configured together");
+  if((config.FX_BASE_URL&&!config.FX_TOKEN)||(config.FX_TOKEN&&!config.FX_BASE_URL))throw new Error("FX_BASE_URL and FX_TOKEN must be configured together");
   return config;
 }
