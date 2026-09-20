@@ -3,7 +3,7 @@ import type { OrderState } from "../domain/order.js";
 import { canTransition } from "../domain/order.js";
 
 export interface OrderLineInput { productId:string; externalId:string; title:string; quantity:number; unitPrice:number; unitCost:number; shippingCost:number }
-export interface CreateOrderInput { id:string; currency:string; subtotal:number; shipping:number; total:number; idempotencyKey:string; requestHash:string; customerId:string; shippingAddress:Record<string,unknown>; lines:OrderLineInput[] }
+export interface CreateOrderInput { id:string; storeId?:string; currency:string; subtotal:number; shipping:number; total:number; idempotencyKey:string; requestHash:string; customerId:string; shippingAddress:Record<string,unknown>; lines:OrderLineInput[] }
 
 export interface PublicOrderRow {
   id:string;
@@ -14,6 +14,7 @@ export interface PublicOrderRow {
   total:number;
   version:number;
   externalPaymentId?:string;
+  storeId?:string;
   customerId?:string;
   shippingAddress:Record<string,unknown>;
   createdAt:Date;
@@ -49,8 +50,8 @@ export async function createOrder(db:PostgresDatabase,input:CreateOrderInput){
     }
 
     await c.query(
-      "INSERT INTO orders(id,status,currency,subtotal,shipping,total,idempotency_key,request_hash,customer_id,shipping_address) VALUES($1,'pending_payment',$2,$3,$4,$5,$6,$7,$8,$9)",
-      [input.id,input.currency,input.subtotal,input.shipping,input.total,input.idempotencyKey,input.requestHash,input.customerId,input.shippingAddress]
+      "INSERT INTO orders(id,status,store_id,currency,subtotal,shipping,total,idempotency_key,request_hash,customer_id,shipping_address) VALUES($1,'pending_payment',$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+      [input.id,input.storeId??null,input.currency,input.subtotal,input.shipping,input.total,input.idempotencyKey,input.requestHash,input.customerId,input.shippingAddress]
     );
 
     for(const line of input.lines){
@@ -137,7 +138,7 @@ export async function transitionPersistedOrder(db:PostgresDatabase,id:string,to:
 
 export async function getOrder(db:PostgresDatabase,id:string){
   const order=await db.query<PublicOrderRow>(
-    'SELECT id,status,currency,subtotal,shipping,total,version,external_payment_id AS "externalPaymentId",customer_id AS "customerId",shipping_address AS "shippingAddress",created_at AS "createdAt",updated_at AS "updatedAt" FROM orders WHERE id=$1',
+    'SELECT id,status,store_id AS "storeId",currency,subtotal,shipping,total,version,external_payment_id AS "externalPaymentId",customer_id AS "customerId",shipping_address AS "shippingAddress",created_at AS "createdAt",updated_at AS "updatedAt" FROM orders WHERE id=$1',
     [id]
   );
   const row=order.rows[0];
