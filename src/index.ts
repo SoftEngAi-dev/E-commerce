@@ -46,3 +46,8 @@ export * from "./application/market-expansion-service.js";
 export * from "./application/analytics.js";
 export * from "./application/recommendations.js";
 export * from "./application/autonomous-action.js";
+export * from "./application/risk-gate.js";
+export * from "./persistence/audit-pg.js";
+export * from "./application/catalog-intelligence.js";
+export * from "./workers/job-recovery.js";
+export * from "./workers/inventory-expiry.js";
