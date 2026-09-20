@@ -26,5 +26,5 @@ export async function submitPaidOrder(
   const current=await db.query<{version:number}>("SELECT version FROM orders WHERE id=$1",[orderId]);
   const version=current.rows[0]?.version;
   if(version===undefined)throw new Error("Order version not found");
-  return transitionPersistedOrder(db,orderId,"submitted",version);
+  return transitionPersistedOrder(db,orderId,"submitted",version,undefined,fulfillment.externalId);
 }
