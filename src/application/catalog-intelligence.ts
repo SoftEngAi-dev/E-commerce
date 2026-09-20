@@ -1,0 +1,26 @@
+import type { PostgresDatabase } from "../persistence/postgres.js";
+import { upsertProduct } from "../persistence/postgres.js";
+import { scoreProduct, type ProductSignals } from "./product-intelligence.js";
+import { checkCompliance } from "./compliance.js";
+import type { NormalizedProduct } from "../domain/providers.js";
+
+export interface CatalogCandidate{
+  product:NormalizedProduct;
+  market:string;
+  channel:"store"|"marketplace"|"social";
+  claims:string[];
+  signals:ProductSignals;
+}
+
+export async function ingestCatalogCandidate(db:PostgresDatabase,input:CatalogCandidate){
+  const decision=scoreProduct(input.signals);
+  const compliance=checkCompliance({policy:{dropshippingAllowed:true},market:input.market,claims:input.claims,channel:input.channel});
+  await upsertProduct(db,input.product);
+  await db.query(
+    `INSERT INTO product_signals(product_id,demand,margin,competition,supplier_score,shipping_score,risk_score,trend,composite_score,decision)
+     SELECT id,$2,$3,$4,$5,$6,$7,$8,$9,$10 FROM products WHERE source=$1 AND external_id=$11
+     ON CONFLICT(product_id) DO UPDATE SET demand=EXCLUDED.demand,margin=EXCLUDED.margin,competition=EXCLUDED.competition,supplier_score=EXCLUDED.supplier_score,shipping_score=EXCLUDED.shipping_score,risk_score=EXCLUDED.risk_score,trend=EXCLUDED.trend,composite_score=EXCLUDED.composite_score,decision=EXCLUDED.decision,updated_at=now()`,
+    [input.product.source,input.signals.demand,input.signals.margin,input.signals.competition,input.signals.supplier,input.signals.shipping,input.signals.risk,input.signals.trend,decision.score,decision.decision]
+  );
+  return {score:decision,compliance};
+}
