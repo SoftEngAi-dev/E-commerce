@@ -3,7 +3,7 @@ import type { OrderState } from "../domain/order.js";
 import { canTransition } from "../domain/order.js";
 
 export interface OrderLineInput { productId:string; externalId:string; title:string; quantity:number; unitPrice:number; unitCost:number; shippingCost:number }
-export interface CreateOrderInput { id:string; currency:string; subtotal:number; shipping:number; total:number; idempotencyKey:string; customerId:string; shippingAddress:Record<string,unknown>; lines:OrderLineInput[] }
+export interface CreateOrderInput { id:string; currency:string; subtotal:number; shipping:number; total:number; idempotencyKey:string; requestHash:string; customerId:string; shippingAddress:Record<string,unknown>; lines:OrderLineInput[] }
 
 export async function upsertCustomer(db:PostgresDatabase,email:string,country:string){
   const r=await db.query<{id:string}>("INSERT INTO customers(email,country) VALUES($1,$2) ON CONFLICT(email) DO UPDATE SET country=EXCLUDED.country RETURNING id",[email,country.toUpperCase()]);
@@ -12,14 +12,14 @@ export async function upsertCustomer(db:PostgresDatabase,email:string,country:st
 
 export async function createOrder(db:PostgresDatabase,input:CreateOrderInput){
   return db.transaction(async c=>{
-    const existing=await c.query<{id:string;status:OrderState;total:number}>("SELECT id,status,total FROM orders WHERE idempotency_key=$1",[input.idempotencyKey]);
-    if(existing.rows[0])return existing.rows[0];
+    const existing=await c.query<{id:string;status:OrderState;total:number;request_hash:string|null}>("SELECT id,status,total,request_hash FROM orders WHERE idempotency_key=$1",[input.idempotencyKey]);
+    if(existing.rows[0]){if(existing.rows[0].request_hash!==input.requestHash)throw new Error("Idempotency key reused with a different request");return existing.rows[0];}
     for(const line of input.lines){
       const stock=await c.query<{available:number}>("SELECT stock-reserved_stock AS available FROM products WHERE id=$1 AND status='published' FOR UPDATE",[line.productId]);
       const item=stock.rows[0];
       if(!item||item.available<line.quantity)throw new Error("Product unavailable: "+line.productId);
     }
-    await c.query("INSERT INTO orders(id,status,currency,subtotal,shipping,total,idempotency_key,customer_id,shipping_address) VALUES($1,'pending_payment',$2,$3,$4,$5,$6,$7,$8)",[input.id,input.currency,input.subtotal,input.shipping,input.total,input.idempotencyKey,input.customerId,input.shippingAddress]);
+    await c.query("INSERT INTO orders(id,status,currency,subtotal,shipping,total,idempotency_key,request_hash,customer_id,shipping_address) VALUES($1,'pending_payment',$2,$3,$4,$5,$6,$7,$8)",[input.id,input.currency,input.subtotal,input.shipping,input.total,input.idempotencyKey,input.requestHash,input.customerId,input.shippingAddress]);
     for(const line of input.lines){
       await c.query("UPDATE products SET reserved_stock=reserved_stock+$1,updated_at=now() WHERE id=$2",[line.quantity,line.productId]);
       await c.query("INSERT INTO inventory_reservations(order_id,product_id,quantity,expires_at) VALUES($1,$2,$3,now()+interval '30 minutes')",[input.id,line.productId,line.quantity]);
