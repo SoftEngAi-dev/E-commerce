@@ -1,9 +1,9 @@
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { z } from "zod";
 import { loadConfig, type AppConfig } from "../config.js";
 import { authenticateApiKey } from "../security/admin-auth.js";
-import { signHmac, verifyHmac, ReplayGuard } from "../security/hmac.js";
+import { verifyHmac } from "../security/hmac.js";
 import { FixedWindowLimiter } from "./rate-limit.js";
 import { PostgresDatabase } from "../persistence/postgres.js";
 import { getProduct, listPublishedProducts } from "../persistence/product-pg.js";
@@ -40,7 +40,6 @@ function parseJson(text:string){try{return JSON.parse(text) as unknown}catch{thr
 
 export function createCommerceServer(config:AppConfig,db:PostgresDatabase){
   const limiter=new FixedWindowLimiter(120,60_000);
-  const replay=new ReplayGuard();
   return createServer(async(req,res)=>{
     const requestId=randomUUID();
     try{
@@ -75,7 +74,7 @@ export function createCommerceServer(config:AppConfig,db:PostgresDatabase){
         const lines=[] as Array<Record<string,unknown>>;let total=0;let margin=0;let currency:string|undefined;
         for(const line of parsed.lines){
           const p=await getProduct(db,line.productId);
-          if(!p||p.status!=="published"||p.stock<line.quantity)throw new Error("Product unavailable: "+line.productId);
+          if(!p||p.status!=="published"||(p.stock-p.reservedStock)<line.quantity)throw new Error("Product unavailable: "+line.productId);
           if(currency&&currency!==p.currency)throw new Error("Mixed currencies are not supported in one quote");
           currency=p.currency;
           const q=quotePrice({supplierCost:p.cost,shippingCost:p.shippingCost,feeRate:p.feeRate,targetMarginRate:p.targetMarginRate});
@@ -89,7 +88,7 @@ export function createCommerceServer(config:AppConfig,db:PostgresDatabase){
         const idempotencyKey=req.headers["idempotency-key"];
         if(typeof idempotencyKey!=="string"||idempotencyKey.length<16||idempotencyKey.length>200)
           return json(res,400,{error:"Idempotency-Key header is required"},requestId);
-        const parsed=orderSchema.parse(parseJson(await readBody(req)));
+        const raw=await readBody(req);\n        const requestHash=createHash("sha256").update(raw).digest("hex");\n        const parsed=orderSchema.parse(parseJson(raw));
         const grouped=[] as Array<{productId:string;externalId:string;title:string;quantity:number;unitPrice:number;unitCost:number;shippingCost:number}>;
         let subtotal=0;let currency:string|undefined;
         for(const line of parsed.lines){
@@ -103,7 +102,7 @@ export function createCommerceServer(config:AppConfig,db:PostgresDatabase){
         }
         const customerId=await upsertCustomer(db,parsed.email,parsed.country);
         if(!customerId)throw new Error("Customer creation failed");
-        const order=await createOrder(db,{id:randomUUID(),currency:currency??"USD",subtotal,shipping:0,total:subtotal,idempotencyKey,customerId,shippingAddress:parsed.shippingAddress,lines:grouped});
+        const order=await createOrder(db,{id:randomUUID(),currency:currency??"USD",subtotal,shipping:0,total:subtotal,idempotencyKey,requestHash,customerId,shippingAddress:parsed.shippingAddress,lines:grouped});
         return json(res,201,{order},requestId);
       }
 
@@ -116,7 +115,7 @@ export function createCommerceServer(config:AppConfig,db:PostgresDatabase){
       if(req.method==="POST"&&url.pathname==="/webhooks/generic"){
         const raw=await readBody(req);const sig=req.headers["x-webhook-signature"],eventId=req.headers["x-webhook-event-id"],provider=req.headers["x-webhook-provider"]??"generic";
         if(typeof sig!=="string"||typeof eventId!=="string")return json(res,401,{error:"Invalid webhook"},requestId);
-        if(!verifyHmac(raw,sig,config.WEBHOOK_SECRET)||!replay.accept(eventId))return json(res,401,{error:"Invalid webhook"},requestId);
+        if(!verifyHmac(raw,sig,config.WEBHOOK_SECRET))return json(res,401,{error:"Invalid webhook"},requestId);
         if(!(await recordWebhookEvent(db,{eventId,provider:String(provider),signatureValid:true,rawPayload:raw})))return json(res,202,{accepted:true,eventId,duplicate:true},requestId);
         const event=paymentEventSchema.parse(parseJson(raw));const current=await getOrderVersion(db,event.orderId);
         if(current){
