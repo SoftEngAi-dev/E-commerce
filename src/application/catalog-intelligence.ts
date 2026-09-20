@@ -25,5 +25,5 @@ export async function ingestCatalogCandidate(db:PostgresDatabase,input:CatalogCa
      ON CONFLICT(product_id) DO UPDATE SET demand=EXCLUDED.demand,margin=EXCLUDED.margin,competition=EXCLUDED.competition,supplier_score=EXCLUDED.supplier_score,shipping_score=EXCLUDED.shipping_score,risk_score=EXCLUDED.risk_score,trend=EXCLUDED.trend,composite_score=EXCLUDED.composite_score,decision=EXCLUDED.decision,updated_at=now()`,
     [input.product.source,input.signals.demand,input.signals.margin,input.signals.competition,input.signals.supplier,input.signals.shipping,input.signals.risk,input.signals.trend,decision.score,decision.decision]
   );
-  return {productId,score:decision,compliance};
+  return {productId,score:decision,compliance,market:input.market,channel:input.channel,category:input.product.category};
 }
