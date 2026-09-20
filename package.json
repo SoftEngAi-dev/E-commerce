@@ -1,0 +1,1 @@
+{"name":"autonomous-ecommerce","version":"1.4.0","private":true,"type":"module","scripts":{"build":"tsc --noEmit","test":"node --test --import tsx","check":"npm run build && npm test"},"dependencies":{"zod":"^3.25.76"},"devDependencies":{"@types/node":"^22.15.21","tsx":"^4.19.4","typescript":"^5.8.3"}}
