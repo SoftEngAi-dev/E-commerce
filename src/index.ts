@@ -17,3 +17,6 @@ export * from "./security/hmac.js";
 export * from "./security/admin-auth.js";
 export * from "./adapters/registry.js";
 export * from "./ai/provider.js";
+export * from "./persistence/postgres.js";
+export * from "./persistence/idempotency-pg.js";
+export * from "./persistence/outbox-pg.js";
