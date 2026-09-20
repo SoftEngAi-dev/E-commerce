@@ -110,7 +110,7 @@ export function createCommerceServer(config:AppConfig,db:PostgresDatabase){
       if(req.method==="GET"&&url.pathname.startsWith("/api/orders/")){
         const orderId=url.pathname.slice("/api/orders/".length);const order=await getOrder(db,orderId);
         if(!order)return json(res,404,{error:"Order not found"},requestId);
-        return json(res,200,{order},requestId);
+        return json(res,200,{order:{id:order.id,status:order.status,currency:order.currency,total:order.total,items:order.items,createdAt:order.createdAt,updatedAt:order.updatedAt}},requestId);
       }
 
       if(req.method==="POST"&&url.pathname==="/webhooks/generic"){
