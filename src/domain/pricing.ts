@@ -1,0 +1,2 @@
+export interface PricingInput{supplierCost:number;shippingCost:number;taxCost?:number;feeRate?:number;targetMarginRate?:number;fixedFee?:number}
+export function quotePrice(i:PricingInput){const c=i.supplierCost,s=i.shippingCost,t=i.taxCost??0,f=i.fixedFee??0,fr=i.feeRate??0,m=i.targetMarginRate??.30;if([c,s,t,f].some(v=>!Number.isFinite(v)||v<0)||fr<0||m<0||fr+m>=1)throw new Error("Invalid pricing input");const landedCost=c+s+t+f,price=landedCost/(1-m-fr),fee=price*fr,grossMargin=price-landedCost-fee;return{landedCost,fee,price,grossMargin,grossMarginRate:grossMargin/price}}
