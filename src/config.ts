@@ -14,6 +14,7 @@ const schema=z.object({
   AI_MODEL:z.string().min(1).optional(),
   AI_TOKEN:z.string().min(1).optional(),
   AI_PROVIDER_ID:z.string().min(1).default("local-ai"),
+  CORS_ORIGINS:z.string().default(""),
   MERCADO_PAGO_ACCESS_TOKEN:z.string().min(1).optional(),
   CHECKOUT_SUCCESS_URL:z.string().url().optional(),
   CHECKOUT_FAILURE_URL:z.string().url().optional(),
