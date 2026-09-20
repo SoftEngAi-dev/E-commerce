@@ -7,6 +7,10 @@ import { verifyHmac } from "../security/hmac.js";
 import { FixedWindowLimiter } from "./rate-limit.js";
 import { PostgresDatabase } from "../persistence/postgres.js";
 import { getProduct, listPublishedProducts } from "../persistence/product-pg.js";
+import { ingestCatalogCandidate } from "../application/catalog-intelligence.js";
+import { getOperationalSummary, getProductPerformance } from "../application/analytics.js";
+import { getMarketPolicy, isCategoryAllowed, isChannelAllowedForMarket } from "../application/market-policy.js";
+import { PostgresAuditSink } from "../persistence/audit-pg.js";
 import { createOrder, getOrder, getOrderVersion, transitionPersistedOrder, upsertCustomer } from "../persistence/order-pg.js";
 import { recordWebhookEvent, markWebhookProcessed } from "../persistence/webhook-pg.js";
 import { quotePrice } from "../domain/pricing.js";
@@ -47,7 +51,7 @@ function json(res:ServerResponse,status:number,body:unknown,id:string){
   res.end(JSON.stringify(body));
 }
 function clientKey(req:IncomingMessage){return req.socket.remoteAddress??"unknown"}
-function parseJson(text:string){try{return JSON.parse(text) as unknown}catch{throw new Error("Invalid JSON")}}
+function parseJson(text:string){try{return JSON.parse(text) as unknown}catch{throw new Error("Invalid JSON")}}\nfunction serviceAuthenticated(req:IncomingMessage,config:AppConfig){const key=req.headers["x-internal-service-key"];return authenticateApiKey(typeof key==="string"?key:undefined,config.INTERNAL_SERVICE_KEY)!==null}
 
 export function createCommerceServer(config:AppConfig,db:PostgresDatabase,deps:{paymentProvider?:PaymentProvider}={}){
   const limiter=new FixedWindowLimiter(120,60_000);
@@ -173,6 +177,87 @@ export function createCommerceServer(config:AppConfig,db:PostgresDatabase,deps:{
           await markWebhookProcessed(db,eventId);
         }
         return json(res,202,{accepted:true,eventId},requestId);
+      }
+
+      if(url.pathname.startsWith("/internal/")){
+        if(!serviceAuthenticated(req,config))return json(res,401,{error:"Unauthorized"},requestId);
+
+        if(req.method==="GET"&&url.pathname==="/internal/analytics/summary")
+          return json(res,200,{summary:await getOperationalSummary(db)},requestId);
+
+        if(req.method==="GET"&&url.pathname==="/internal/analytics/products"){
+          const limit=Number(url.searchParams.get("limit")??"50");
+          return json(res,200,{items:await getProductPerformance(db,limit)},requestId);
+        }
+
+        if(req.method==="POST"&&url.pathname==="/internal/catalog/ingest"){
+          const raw=parseJson(await readBody(req));
+          const candidate=z.object({
+            product:z.object({
+              externalId:z.string().min(1),
+              title:z.string().min(1).max(500),
+              currency:z.string().length(3),
+              cost:z.number().nonnegative(),
+              stock:z.number().int().nonnegative(),
+              imageUrls:z.array(z.string().url()).default([]),
+              source:z.string().min(1),
+              description:z.string().optional(),
+              category:z.string().optional()
+            }),
+            market:z.string().length(2),
+            channel:z.enum(["store","marketplace","social"]),
+            claims:z.array(z.string()).default([]),
+            signals:z.object({
+              demand:z.number().min(0).max(100),
+              margin:z.number().min(0).max(100),
+              competition:z.number().min(0).max(100),
+              supplier:z.number().min(0).max(100),
+              shipping:z.number().min(0).max(100),
+              risk:z.number().min(0).max(100),
+              trend:z.number().min(0).max(100)
+            })
+          }).parse(raw);
+          const result=await ingestCatalogCandidate(db,candidate);
+          return json(res,202,{accepted:true,result},requestId);
+        }
+
+        if(req.method==="POST"&&url.pathname==="/internal/catalog/candidates"){
+          const body=z.object({
+            productId:z.string().uuid(),
+            market:z.string().length(2),
+            channel:z.enum(["store","marketplace","social"]),
+            category:z.string().optional()
+          }).parse(parseJson(await readBody(req)));
+          const policy=await getMarketPolicy(db,body.market);
+          if(!policy||!isChannelAllowedForMarket(policy,body.channel))return json(res,409,{error:"Market/channel policy does not allow publication"},requestId);
+          if(body.category&&!isCategoryAllowed(policy,body.category))return json(res,409,{error:"Category blocked for market"},requestId);
+          const signal=await db.query<{decision:string;score:number}>("SELECT decision,composite_score AS score FROM product_signals WHERE product_id=$1",[body.productId]);
+          const row=signal.rows[0];
+          if(!row||row.decision!=="test")return json(res,409,{error:"Product is not an eligible publication candidate"},requestId);
+          const updated=await db.query<{id:string}>(
+            "UPDATE products SET status='published',published_at=now(),updated_at=now() WHERE id=$1 AND status<>'published' RETURNING id",
+            [body.productId]
+          );
+          const audit=new PostgresAuditSink(db);
+          await audit.write({actor:"n8n",action:"catalog.publish",entityType:"product",entityId:body.productId,risk:"medium",evidence:["product-intelligence","market-policy"],metadata:{score:row.score,market:body.market,channel:body.channel,status:updated.rowCount===1?"published":"already-published"},createdAt:new Date()});
+          return json(res,200,{published:true,productId:body.productId,score:Number(row.score)},requestId);
+        }
+
+        if(req.method==="POST"&&url.pathname==="/internal/audit/events"){
+          const event=z.object({
+            actor:z.string().min(1).max(100),
+            action:z.string().min(1).max(200),
+            entityType:z.string().min(1).max(100),
+            entityId:z.string().max(200).optional(),
+            risk:z.enum(["low","medium","high","critical"]),
+            evidence:z.array(z.string()).default([]),
+            metadata:z.record(z.string(),z.unknown()).default({})
+          }).parse(parseJson(await readBody(req)));
+          await new PostgresAuditSink(db).write({...event,createdAt:new Date()});
+          return json(res,202,{accepted:true},requestId);
+        }
+
+        return json(res,404,{error:"Internal route not found"},requestId);
       }
 
       if(req.method==="GET"&&url.pathname==="/admin/ping"){
