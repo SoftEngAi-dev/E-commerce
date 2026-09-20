@@ -3,9 +3,9 @@ type Product={id:string;title?:string;name?:string;price?:number;currency?:strin
 async function getProducts():Promise<Product[]>{
   const base=process.env.COMMERCE_API_URL??"http://localhost:3000";
   const store=process.env.COMMERCE_STORE_SLUG;
-  const endpoint=store?base+"/api/products?store="+encodeURIComponent(store):endpoint;
+  const endpoint=store?base+"/api/products?store="+encodeURIComponent(store):base+"/api/products";
   try{
-    const response=await fetch(base+"/api/products",{cache:"no-store"});
+    const response=await fetch(endpoint,{cache:"no-store"});
     if(!response.ok)return[];
     const data=(await response.json()) as {items?:Product[]};
     return Array.isArray(data.items)?data.items:[];
