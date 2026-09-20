@@ -8,3 +8,5 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_id UUID REFERENCES customer
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_address JSONB NOT NULL DEFAULT '{}';
 CREATE INDEX IF NOT EXISTS products_public_idx ON products(status,stock,published_at);
 CREATE INDEX IF NOT EXISTS order_items_order_idx ON order_items(order_id);
+
+ALTER TABLE products ADD COLUMN IF NOT EXISTS image_urls TEXT[] NOT NULL DEFAULT '{}';
