@@ -55,3 +55,4 @@ export * from "./application/ai-review.js";
 export * from "./persistence/store-pg.js";
 export * from "./adapters/http-tax.js";
 export * from "./adapters/http-fx.js";
+export * from "./application/pricing-service.js";
