@@ -28,5 +28,5 @@ export async function getProductPerformance(db:PostgresDatabase,limit=50){
      GROUP BY oi.product_id
      ORDER BY revenue DESC LIMIT $1`,[Math.min(Math.max(1,limit),100)]
   );
-  return r.rows;
+  return r.rows.map(row=>({...row,revenue:Number(row.revenue)}));
 }
