@@ -36,6 +36,7 @@ services:
     restart: unless-stopped
     environment:
       COMMERCE_API_URL: http://api:3000
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY}
     depends_on:
       - api
     ports:
