@@ -16,11 +16,14 @@ export async function ingestCatalogCandidate(db:PostgresDatabase,input:CatalogCa
   const decision=scoreProduct(input.signals);
   const compliance=checkCompliance({policy:{dropshippingAllowed:true},market:input.market,claims:input.claims,channel:input.channel});
   await upsertProduct(db,input.product);
+  const productRow=await db.query<{id:string}>("SELECT id FROM products WHERE source=$1 AND external_id=$2",[input.product.source,input.product.externalId]);
+  const productId=productRow.rows[0]?.id;
+  if(!productId)throw new Error("Catalog product was not persisted");
   await db.query(
     `INSERT INTO product_signals(product_id,demand,margin,competition,supplier_score,shipping_score,risk_score,trend,composite_score,decision)
      SELECT id,$2,$3,$4,$5,$6,$7,$8,$9,$10 FROM products WHERE source=$1 AND external_id=$11
      ON CONFLICT(product_id) DO UPDATE SET demand=EXCLUDED.demand,margin=EXCLUDED.margin,competition=EXCLUDED.competition,supplier_score=EXCLUDED.supplier_score,shipping_score=EXCLUDED.shipping_score,risk_score=EXCLUDED.risk_score,trend=EXCLUDED.trend,composite_score=EXCLUDED.composite_score,decision=EXCLUDED.decision,updated_at=now()`,
     [input.product.source,input.signals.demand,input.signals.margin,input.signals.competition,input.signals.supplier,input.signals.shipping,input.signals.risk,input.signals.trend,decision.score,decision.decision]
   );
-  return {score:decision,compliance};
+  return {productId,score:decision,compliance};
 }
