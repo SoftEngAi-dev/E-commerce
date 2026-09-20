@@ -34,3 +34,12 @@ export function taskForAgent(agentId:string,input:Record<string,unknown>,evidenc
   const agent=getAgentDefinition(agentId);
   return{type:agent.id,input,risk:agent.defaultRisk,evidence};
 }
+
+
+export function isActionRegistered(action:string){
+  return AGENT_CATALOG.some(agent=>agent.allowedActions.includes(action));
+}
+
+export function owningAgentForAction(action:string){
+  return AGENT_CATALOG.find(agent=>agent.allowedActions.includes(action))?.id;
+}
