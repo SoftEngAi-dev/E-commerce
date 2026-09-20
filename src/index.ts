@@ -51,3 +51,4 @@ export * from "./persistence/audit-pg.js";
 export * from "./application/catalog-intelligence.js";
 export * from "./workers/job-recovery.js";
 export * from "./workers/inventory-expiry.js";
+export * from "./application/ai-review.js";
