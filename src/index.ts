@@ -63,3 +63,6 @@ export * from "./application/agent-approval.js";
 export * from "./ai/agent-catalog.js";
 export * from "./ai/provider-router.js";
 export * from "./application/stores.js";
+export * from "./domain/suppliers.js";
+export * from "./application/supplier-import.js";
+export * from "./application/acquisition.js";
