@@ -44,7 +44,7 @@ async function readBody(req:IncomingMessage,maxBytes=1_000_000){
   }
   return Buffer.concat(chunks).toString("utf8");
 }
-function json(res:ServerResponse,status:number,body:unknown,id:string){
+function applyCors(req:IncomingMessage,res:ServerResponse,origins:string){\n  const origin=req.headers.origin;\n  const allowed=origins.split(",").map(x=>x.trim()).filter(Boolean);\n  if(origin&&allowed.includes(origin)){res.setHeader("access-control-allow-origin",origin);res.setHeader("vary","Origin");res.setHeader("access-control-allow-credentials","true")}\n}\nfunction json(res:ServerResponse,status:number,body:unknown,id:string){
   res.statusCode=status;
   res.setHeader("content-type","application/json; charset=utf-8");
   res.setHeader("cache-control","no-store");
