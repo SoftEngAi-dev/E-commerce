@@ -1,0 +1,2 @@
+import type{Agent}from"./orchestrator.js";
+export class AgentRegistry{private agents=new Map<string,Agent>();register(agent:Agent){if(this.agents.has(agent.id))throw new Error("Agent already registered: "+agent.id);this.agents.set(agent.id,agent);return this}get(id:string){const a=this.agents.get(id);if(!a)throw new Error("Agent not registered: "+id);return a}list(){return[...this.agents.keys()]}}
