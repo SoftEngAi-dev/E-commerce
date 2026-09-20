@@ -10,6 +10,11 @@ import { getProduct, listPublishedProducts } from "../persistence/product-pg.js"
 import { createOrder, getOrder, getOrderVersion, transitionPersistedOrder, upsertCustomer } from "../persistence/order-pg.js";
 import { recordWebhookEvent, markWebhookProcessed } from "../persistence/webhook-pg.js";
 import { quotePrice } from "../domain/pricing.js";
+import type { PaymentProvider } from "../domain/providers.js";
+import { createPaymentForOrder } from "../application/payment-service.js";
+import { enqueueJob } from "../persistence/job-queue-pg.js";
+import { verifyMercadoPagoSignature } from "../adapters/mercado-pago-webhook.js";
+import { MercadoPagoCheckoutProProvider } from "../adapters/mercado-pago.js";
 
 const checkoutSchema=z.object({
   lines:z.array(z.object({productId:z.string().uuid(),quantity:z.number().int().positive().max(99)})).min(1).max(50)
@@ -38,7 +43,7 @@ function json(res:ServerResponse,status:number,body:unknown,id:string){
 function clientKey(req:IncomingMessage){return req.socket.remoteAddress??"unknown"}
 function parseJson(text:string){try{return JSON.parse(text) as unknown}catch{throw new Error("Invalid JSON")}}
 
-export function createCommerceServer(config:AppConfig,db:PostgresDatabase){
+export function createCommerceServer(config:AppConfig,db:PostgresDatabase,deps:{paymentProvider?:PaymentProvider}={}){
   const limiter=new FixedWindowLimiter(120,60_000);
   return createServer(async(req,res)=>{
     const requestId=randomUUID();
@@ -106,10 +111,34 @@ export function createCommerceServer(config:AppConfig,db:PostgresDatabase){
         return json(res,201,{order},requestId);
       }
 
+      if(req.method==="POST"&&url.pathname.match(/^\\/api\\/orders\\/[^/]+\\/pay$/)){
+        const idempotencyKey=req.headers["idempotency-key"];
+        if(typeof idempotencyKey!=="string"||idempotencyKey.length<16||idempotencyKey.length>200)return json(res,400,{error:"Idempotency-Key header is required"},requestId);
+        if(!deps.paymentProvider)return json(res,503,{error:"Payment provider is not configured"},requestId);
+        const orderId=url.pathname.slice("/api/orders/".length,-"/pay".length);
+        const payment=await createPaymentForOrder(db,deps.paymentProvider,orderId,idempotencyKey);
+        return json(res,201,{payment},requestId);
+      }
+
       if(req.method==="GET"&&url.pathname.startsWith("/api/orders/")){
         const orderId=url.pathname.slice("/api/orders/".length);const order=await getOrder(db,orderId);
         if(!order)return json(res,404,{error:"Order not found"},requestId);
         return json(res,200,{order:{id:order.id,status:order.status,currency:order.currency,total:order.total,items:order.items,createdAt:order.createdAt,updatedAt:order.updatedAt}},requestId);
+      }
+
+      if(req.method==="POST"&&url.pathname==="/webhooks/mercadopago"){
+        const raw=await readBody(req);
+        const signature=req.headers["x-signature"];
+        const mpRequestId=req.headers["x-request-id"];
+        const dataId=url.searchParams.get("data.id")??undefined;
+        if(typeof signature!=="string"||typeof mpRequestId!=="string"||!verifyMercadoPagoSignature({signature,requestId:mpRequestId,dataId,secret:config.WEBHOOK_SECRET})){
+          return json(res,401,{error:"Invalid Mercado Pago signature"},requestId);
+        }
+        const eventId="mp:"+mpRequestId+":"+dataId;
+        const accepted=await recordWebhookEvent(db,{eventId,provider:"mercado-pago",signatureValid:true,rawPayload:raw});
+        if(!accepted)return json(res,200,{accepted:true,duplicate:true},requestId);
+        await enqueueJob(db,{type:"payment.sync",payload:{provider:"mercado-pago",externalPaymentId:dataId,eventId}});
+        return json(res,200,{accepted:true},requestId);
       }
 
       if(req.method==="POST"&&url.pathname==="/webhooks/generic"){
@@ -142,7 +171,8 @@ export function createCommerceServer(config:AppConfig,db:PostgresDatabase){
 
 export function startCommerceServer(config=loadConfig()){
   const db=new PostgresDatabase(config.DATABASE_URL);
-  const server=createCommerceServer(config,db);
+  const paymentProvider=config.MERCADO_PAGO_ACCESS_TOKEN?new MercadoPagoCheckoutProProvider({accessToken:config.MERCADO_PAGO_ACCESS_TOKEN,successUrl:config.CHECKOUT_SUCCESS_URL!,failureUrl:config.CHECKOUT_FAILURE_URL!,pendingUrl:config.CHECKOUT_PENDING_URL!}):undefined;
+  const server=createCommerceServer(config,db,{paymentProvider});
   server.listen(config.PORT);
   return {server,db};
 }
