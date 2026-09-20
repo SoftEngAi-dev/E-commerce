@@ -77,7 +77,7 @@ export async function getOrderVersion(db:PostgresDatabase,id:string){
   return r.rows[0];
 }
 
-export async function transitionPersistedOrder(db:PostgresDatabase,id:string,to:OrderState,expectedVersion:number,externalPaymentId?:string){
+export async function transitionPersistedOrder(db:PostgresDatabase,id:string,to:OrderState,expectedVersion:number,externalPaymentId?:string,externalFulfillmentId?:string){
   return db.transaction(async c=>{
     const r=await c.query<{status:OrderState;version:number}>(
       "SELECT status,version FROM orders WHERE id=$1 FOR UPDATE",
@@ -124,8 +124,8 @@ export async function transitionPersistedOrder(db:PostgresDatabase,id:string,to:
     }
 
     await c.query(
-      "UPDATE orders SET status=$1,version=version+1,external_payment_id=COALESCE($3,external_payment_id),updated_at=now() WHERE id=$2",
-      [to,id,externalPaymentId??null]
+      "UPDATE orders SET status=$1,version=version+1,external_payment_id=COALESCE($3,external_payment_id),external_fulfillment_id=COALESCE($4,external_fulfillment_id),updated_at=now() WHERE id=$2",
+      [to,id,externalPaymentId??null,externalFulfillmentId??null]
     );
     await c.query(
       "INSERT INTO outbox_events(topic,aggregate_type,aggregate_id,payload) VALUES($1,$2,$3,$4)",
@@ -147,4 +147,10 @@ export async function getOrder(db:PostgresDatabase,id:string){
     [id]
   );
   return {...row,items:items.rows};
+}
+
+
+export async function findOrderByExternalFulfillmentId(db:PostgresDatabase,externalFulfillmentId:string){
+  const r=await db.query<{id:string}>("SELECT id FROM orders WHERE external_fulfillment_id=$1",[externalFulfillmentId]);
+  return r.rows[0]?.id;
 }
