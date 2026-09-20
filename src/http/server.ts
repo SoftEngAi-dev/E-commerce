@@ -11,6 +11,7 @@ import { ingestCatalogCandidate } from "../application/catalog-intelligence.js";
 import { getOperationalSummary, getProductPerformance } from "../application/analytics.js";
 import { getMarketPolicy, isCategoryAllowed, isChannelAllowedForMarket } from "../application/market-policy.js";
 import { PostgresAuditSink } from "../persistence/audit-pg.js";
+import { getStoreBySlug } from "../persistence/store-pg.js";
 import { reviewWithAI } from "../application/ai-review.js";
 import { createOrder, getOrder, getOrderVersion, transitionPersistedOrder, upsertCustomer } from "../persistence/order-pg.js";
 import { recordWebhookEvent, markWebhookProcessed } from "../persistence/webhook-pg.js";
@@ -73,13 +74,13 @@ export function createCommerceServer(config:AppConfig,db:PostgresDatabase,deps:{
       if(req.method==="GET"&&url.pathname==="/api/products"){
         const limit=Number(url.searchParams.get("limit")??"24");
         const offset=Number(url.searchParams.get("offset")??"0");
-        const products=await listPublishedProducts(db,limit,offset);
+        const storeSlug=url.searchParams.get("store")??undefined;\n        const products=await listPublishedProducts(db,limit,offset,storeSlug??undefined);
         return json(res,200,{items:products},requestId);
       }
 
       if(req.method==="GET"&&url.pathname.startsWith("/api/products/")){
         const id=url.pathname.slice("/api/products/".length);
-        const product=await getProduct(db,id);
+        const storeSlug=url.searchParams.get("store")??undefined;\n        const product=await getProduct(db,id,storeSlug??undefined);
         if(!product||product.status!=="published")return json(res,404,{error:"Product not found"},requestId);
         const pricing=quotePrice({supplierCost:product.cost,shippingCost:product.shippingCost,feeRate:product.feeRate,targetMarginRate:product.targetMarginRate});
         return json(res,200,{product:{...product,price:pricing.price},pricing:{currency:product.currency,price:pricing.price}},requestId);
@@ -89,7 +90,7 @@ export function createCommerceServer(config:AppConfig,db:PostgresDatabase,deps:{
         const parsed=checkoutSchema.parse(parseJson(await readBody(req)));
         const lines:Array<Record<string,unknown>>=[];let total=0;let margin=0;let currency:string|undefined;
         for(const line of parsed.lines){
-          const product=await getProduct(db,line.productId);
+          const storeSlug=parsed.storeSlug;\n          const product=await getProduct(db,line.productId,storeSlug??undefined);
           if(!product||product.status!=="published"||(product.stock-product.reservedStock)<line.quantity)throw new Error("Product unavailable: "+line.productId);
           if(currency&&currency!==product.currency)throw new Error("Mixed currencies are not supported in one quote");
           currency=product.currency;
@@ -112,7 +113,7 @@ export function createCommerceServer(config:AppConfig,db:PostgresDatabase,deps:{
         let subtotal=0;let currency:string|undefined;
 
         for(const line of parsed.lines){
-          const product=await getProduct(db,line.productId);
+          const storeSlug=parsed.storeSlug;\n          const product=await getProduct(db,line.productId,storeSlug??undefined);
           if(!product||product.status!=="published"||(product.stock-product.reservedStock)<line.quantity)
             throw new Error("Product unavailable: "+line.productId);
           if(currency&&currency!==product.currency)throw new Error("Mixed currencies are not supported in one order");
@@ -122,9 +123,9 @@ export function createCommerceServer(config:AppConfig,db:PostgresDatabase,deps:{
           grouped.push({productId:product.id,externalId:product.externalId,title:product.title,quantity:line.quantity,unitPrice:pricing.price,unitCost:product.cost,shippingCost:product.shippingCost});
         }
 
-        const customerId=await upsertCustomer(db,parsed.email,parsed.country);
+        const store=parsed.storeSlug?await getStoreBySlug(db,parsed.storeSlug):undefined;\n        if(parsed.storeSlug&&(!store||!store.enabled))return json(res,409,{error:"Store is not enabled"},requestId);\n        const customerId=await upsertCustomer(db,parsed.email,parsed.country);
         if(!customerId)throw new Error("Customer creation failed");
-        const order=await createOrder(db,{id:randomUUID(),currency:currency??"USD",subtotal,shipping:0,total:subtotal,idempotencyKey,requestHash,customerId,shippingAddress:parsed.shippingAddress,lines:grouped});
+        const order=await createOrder(db,{id:randomUUID(),storeId:store?.id,currency:currency??"USD",subtotal,shipping:0,total:subtotal,idempotencyKey,requestHash,customerId,shippingAddress:parsed.shippingAddress,lines:grouped});
         return json(res,201,{order},requestId);
       }
 
