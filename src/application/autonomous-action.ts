@@ -2,10 +2,7 @@ import type { ActionContext } from "./risk-gate.js";
 import { canExecute } from "./risk-gate.js";
 import type { AuditSink } from "./audit.js";
 
-export interface AutonomousAction{
-  context:ActionContext;
-  execute:()=>Promise<Record<string,unknown>>;
-}
+export interface AutonomousAction{context:ActionContext;execute:()=>Promise<Record<string,unknown>>}
 
 export async function runAutonomousAction(
   action:AutonomousAction,
@@ -13,10 +10,40 @@ export async function runAutonomousAction(
   audit:AuditSink
 ){
   if(!canExecute(action.context,policy)){
-    await audit.write({actor:"ai-orchestrator",action:action.context.action,entityType:"autonomous-action",risk:action.context.risk,evidence:action.context.evidence,metadata:{status:"approval_required"},createdAt:new Date()});
+    await audit.write({
+      actor:"ai-orchestrator",
+      action:action.context.action,
+      entityType:"autonomous-action",
+      entityId:undefined,
+      risk:action.context.risk,
+      evidence:action.context.evidence,
+      metadata:{status:"approval_required"},
+      createdAt:new Date()
+    });
     return{status:"approval_required" as const};
   }
-  const output=await action.execute();
-  await audit.write({actor:"ai-orchestrator",action:action.context.action,entityType:"autonomous-action",risk:action.context.risk,evidence:action.context.evidence,metadata:{status:"executed",output},createdAt:new Date()});
-  return{status:"executed" as const,output};
+  try{
+    const output=await action.execute();
+    await audit.write({
+      actor:"ai-orchestrator",
+      action:action.context.action,
+      entityType:"autonomous-action",
+      risk:action.context.risk,
+      evidence:action.context.evidence,
+      metadata:{status:"executed",output},
+      createdAt:new Date()
+    });
+    return{status:"executed" as const,output};
+  }catch(error){
+    await audit.write({
+      actor:"ai-orchestrator",
+      action:action.context.action,
+      entityType:"autonomous-action",
+      risk:action.context.risk,
+      evidence:action.context.evidence,
+      metadata:{status:"failed",error:error instanceof Error?error.message:"unknown"},
+      createdAt:new Date()
+    });
+    throw error;
+  }
 }
