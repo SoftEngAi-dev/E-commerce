@@ -45,7 +45,12 @@ async function readBody(req:IncomingMessage,maxBytes=1_000_000){
   }
   return Buffer.concat(chunks).toString("utf8");
 }
-function applyCors(req:IncomingMessage,res:ServerResponse,origins:string){\n  const origin=req.headers.origin;\n  const allowed=origins.split(",").map(x=>x.trim()).filter(Boolean);\n  if(origin&&allowed.includes(origin)){res.setHeader("access-control-allow-origin",origin);res.setHeader("vary","Origin");res.setHeader("access-control-allow-credentials","true")}\n}\nfunction json(res:ServerResponse,status:number,body:unknown,id:string){
+function applyCors(req:IncomingMessage,res:ServerResponse,origins:string){
+  const origin=req.headers.origin;
+  const allowed=origins.split(",").map(x=>x.trim()).filter(Boolean);
+  if(origin&&allowed.includes(origin)){res.setHeader("access-control-allow-origin",origin);res.setHeader("vary","Origin");res.setHeader("access-control-allow-credentials","true")}
+}
+function json(res:ServerResponse,status:number,body:unknown,id:string){
   res.statusCode=status;
   res.setHeader("content-type","application/json; charset=utf-8");
   res.setHeader("cache-control","no-store");
@@ -53,7 +58,8 @@ function applyCors(req:IncomingMessage,res:ServerResponse,origins:string){\n  co
   res.end(JSON.stringify(body));
 }
 function clientKey(req:IncomingMessage){return req.socket.remoteAddress??"unknown"}
-function parseJson(text:string){try{return JSON.parse(text) as unknown}catch{throw new Error("Invalid JSON")}}\nfunction serviceAuthenticated(req:IncomingMessage,config:AppConfig){const key=req.headers["x-internal-service-key"];return authenticateApiKey(typeof key==="string"?key:undefined,config.INTERNAL_SERVICE_KEY)!==null}
+function parseJson(text:string){try{return JSON.parse(text) as unknown}catch{throw new Error("Invalid JSON")}}
+function serviceAuthenticated(req:IncomingMessage,config:AppConfig){const key=req.headers["x-internal-service-key"];return authenticateApiKey(typeof key==="string"?key:undefined,config.INTERNAL_SERVICE_KEY)!==null}
 
 export function createCommerceServer(config:AppConfig,db:PostgresDatabase,deps:{paymentProvider?:PaymentProvider}={}){
   const limiter=new FixedWindowLimiter(120,60_000);
@@ -74,13 +80,15 @@ export function createCommerceServer(config:AppConfig,db:PostgresDatabase,deps:{
       if(req.method==="GET"&&url.pathname==="/api/products"){
         const limit=Number(url.searchParams.get("limit")??"24");
         const offset=Number(url.searchParams.get("offset")??"0");
-        const storeSlug=url.searchParams.get("store")??undefined;\n        const products=await listPublishedProducts(db,limit,offset,storeSlug??undefined);
+        const storeSlug=url.searchParams.get("store")??undefined;
+        const products=await listPublishedProducts(db,limit,offset,storeSlug??undefined);
         return json(res,200,{items:products},requestId);
       }
 
       if(req.method==="GET"&&url.pathname.startsWith("/api/products/")){
         const id=url.pathname.slice("/api/products/".length);
-        const storeSlug=url.searchParams.get("store")??undefined;\n        const product=await getProduct(db,id,storeSlug??undefined);
+        const storeSlug=url.searchParams.get("store")??undefined;
+        const product=await getProduct(db,id,storeSlug??undefined);
         if(!product||product.status!=="published")return json(res,404,{error:"Product not found"},requestId);
         const pricing=quotePrice({supplierCost:product.cost,shippingCost:product.shippingCost,feeRate:product.feeRate,targetMarginRate:product.targetMarginRate});
         return json(res,200,{product:{...product,price:pricing.price},pricing:{currency:product.currency,price:pricing.price}},requestId);
@@ -90,7 +98,8 @@ export function createCommerceServer(config:AppConfig,db:PostgresDatabase,deps:{
         const parsed=checkoutSchema.parse(parseJson(await readBody(req)));
         const lines:Array<Record<string,unknown>>=[];let total=0;let margin=0;let currency:string|undefined;
         for(const line of parsed.lines){
-          const storeSlug=parsed.storeSlug;\n          const product=await getProduct(db,line.productId,storeSlug??undefined);
+          const storeSlug=parsed.storeSlug;
+          const product=await getProduct(db,line.productId,storeSlug??undefined);
           if(!product||product.status!=="published"||(product.stock-product.reservedStock)<line.quantity)throw new Error("Product unavailable: "+line.productId);
           if(currency&&currency!==product.currency)throw new Error("Mixed currencies are not supported in one quote");
           currency=product.currency;
@@ -113,7 +122,8 @@ export function createCommerceServer(config:AppConfig,db:PostgresDatabase,deps:{
         let subtotal=0;let currency:string|undefined;
 
         for(const line of parsed.lines){
-          const storeSlug=parsed.storeSlug;\n          const product=await getProduct(db,line.productId,storeSlug??undefined);
+          const storeSlug=parsed.storeSlug;
+          const product=await getProduct(db,line.productId,storeSlug??undefined);
           if(!product||product.status!=="published"||(product.stock-product.reservedStock)<line.quantity)
             throw new Error("Product unavailable: "+line.productId);
           if(currency&&currency!==product.currency)throw new Error("Mixed currencies are not supported in one order");
@@ -123,7 +133,9 @@ export function createCommerceServer(config:AppConfig,db:PostgresDatabase,deps:{
           grouped.push({productId:product.id,externalId:product.externalId,title:product.title,quantity:line.quantity,unitPrice:pricing.price,unitCost:product.cost,shippingCost:product.shippingCost});
         }
 
-        const store=parsed.storeSlug?await getStoreBySlug(db,parsed.storeSlug):undefined;\n        if(parsed.storeSlug&&(!store||!store.enabled))return json(res,409,{error:"Store is not enabled"},requestId);\n        const customerId=await upsertCustomer(db,parsed.email,parsed.country);
+        const store=parsed.storeSlug?await getStoreBySlug(db,parsed.storeSlug):undefined;
+        if(parsed.storeSlug&&(!store||!store.enabled))return json(res,409,{error:"Store is not enabled"},requestId);
+        const customerId=await upsertCustomer(db,parsed.email,parsed.country);
         if(!customerId)throw new Error("Customer creation failed");
         const order=await createOrder(db,{id:randomUUID(),storeId:store?.id,currency:currency??"USD",subtotal,shipping:0,total:subtotal,idempotencyKey,requestHash,customerId,shippingAddress:parsed.shippingAddress,lines:grouped});
         return json(res,201,{order},requestId);
@@ -216,7 +228,8 @@ export function createCommerceServer(config:AppConfig,db:PostgresDatabase,deps:{
             market:z.string().length(2),
             channel:z.enum(["store","marketplace","social"]),
             claims:z.array(z.string()).default([]),
-            supplierPolicy:z.object({dropshippingAllowed:z.boolean().optional(),marketplaceAllowed:z.boolean().optional(),adModificationAllowed:z.boolean().optional(),internationalSalesAllowed:z.boolean().optional(),restrictedTerritories:z.array(z.string()).optional()}).default({}),\n            signals:z.object({
+            supplierPolicy:z.object({dropshippingAllowed:z.boolean().optional(),marketplaceAllowed:z.boolean().optional(),adModificationAllowed:z.boolean().optional(),internationalSalesAllowed:z.boolean().optional(),restrictedTerritories:z.array(z.string()).optional()}).default({}),
+            signals:z.object({
               demand:z.number().min(0).max(100),
               margin:z.number().min(0).max(100),
               competition:z.number().min(0).max(100),
