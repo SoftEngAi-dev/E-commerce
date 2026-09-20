@@ -1,0 +1,5 @@
+import test from "node:test";import assert from "node:assert/strict";import{scoreProduct,checkCompliance,assessMarket,AIOrchestrator}from"../src/index.js";
+test("product intelligence creates a deterministic decision",()=>{const r=scoreProduct({demand:90,margin:90,competition:30,supplier:85,shipping:20,risk:10,trend:80});assert.equal(r.decision,"test");assert.ok(r.score>80)});
+test("compliance blocks prohibited claims",()=>{const r=checkCompliance({policy:{dropshippingAllowed:true},market:"UY",claims:["cures disease"],channel:"store"});assert.equal(r.allowed,false);assert.ok(r.reasons.includes("unverified-health-or-outcome-claim"))});
+test("market assessment produces a pilot signal",()=>{const r=assessMarket({demand:85,competition:25,shipping:20,paymentCoverage:90,regulatoryComplexity:20,supplierCoverage:80});assert.equal(r.status,"pilot")});
+test("high risk AI action is gated",async()=>{const o=new AIOrchestrator(new Map());const r=await o.run({type:"pricing",input:{},risk:"high",evidence:["margin-analysis"]});assert.equal(r.status,"approval_required")});
