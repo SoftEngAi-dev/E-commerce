@@ -42,3 +42,7 @@ export * from "./application/market-policy.js";
 export * from "./application/agent-policies.js";
 export * from "./adapters/json-feed.js";
 export * from "./workers/outbox-publisher.js";
+export * from "./application/market-expansion-service.js";
+export * from "./application/analytics.js";
+export * from "./application/recommendations.js";
+export * from "./application/autonomous-action.js";
