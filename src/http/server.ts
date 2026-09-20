@@ -31,6 +31,7 @@ const checkoutSchema=z.object({
 });
 const quoteSchema=checkoutSchema.extend({storeSlug:z.string().min(1).max(100).optional(),country:z.string().length(2).optional(),postalCode:z.string().max(20).optional()});
 const orderSchema=checkoutSchema.extend({
+  storeSlug:z.string().min(1).max(100).optional(),
   email:z.string().email().max(320),
   country:z.string().length(2),
   shippingAddress:z.record(z.string(),z.unknown()).default({})
@@ -291,7 +292,7 @@ export function createCommerceServer(config:AppConfig,db:PostgresDatabase,deps:{
         const parts=suffix.split("/");
         const runId=parts[0];
         const action=parts[1];
-        if(!runId||!["approve","reject"].includes(action))return json(res,404,{error:"AI approval route not found"},requestId);
+        if(!runId||(action!=="approve"&&action!=="reject"))return json(res,404,{error:"AI approval route not found"},requestId);
 
         if(action==="approve"){
           const result=await approveAgentRun(db,runId,principal.actorId);
