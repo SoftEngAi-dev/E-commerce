@@ -11,6 +11,7 @@ import { ingestCatalogCandidate } from "../application/catalog-intelligence.js";
 import { getOperationalSummary, getProductPerformance } from "../application/analytics.js";
 import { getMarketPolicy, isCategoryAllowed, isChannelAllowedForMarket } from "../application/market-policy.js";
 import { PostgresAuditSink } from "../persistence/audit-pg.js";
+import { listPendingAgentRuns } from "../persistence/agent-runs-pg.js";
 import { getStoreBySlug } from "../persistence/store-pg.js";
 import { reviewWithAI } from "../application/ai-review.js";
 import { createOrder, getOrder, getOrderVersion, transitionPersistedOrder, upsertCustomer } from "../persistence/order-pg.js";
@@ -188,6 +189,11 @@ export function createCommerceServer(config:AppConfig,db:PostgresDatabase,deps:{
 
       if(url.pathname.startsWith("/internal/")){
         if(!serviceAuthenticated(req,config))return json(res,401,{error:"Unauthorized"},requestId);
+
+        if(req.method==="GET"&&url.pathname==="/internal/ai/pending"){
+          const limit=Number(url.searchParams.get("limit")??"20");
+          return json(res,200,{items:await listPendingAgentRuns(db,limit)},requestId);
+        }
 
         if(req.method==="GET"&&url.pathname==="/internal/analytics/summary")
           return json(res,200,{summary:await getOperationalSummary(db)},requestId);
