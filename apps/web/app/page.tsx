@@ -2,6 +2,8 @@ type Product={id:string;title?:string;name?:string;price?:number;currency?:strin
 
 async function getProducts():Promise<Product[]>{
   const base=process.env.COMMERCE_API_URL??"http://localhost:3000";
+  const store=process.env.COMMERCE_STORE_SLUG;
+  const endpoint=store?base+"/api/products?store="+encodeURIComponent(store):endpoint;
   try{
     const response=await fetch(base+"/api/products",{cache:"no-store"});
     if(!response.ok)return[];
