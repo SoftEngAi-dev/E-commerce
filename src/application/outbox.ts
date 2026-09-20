@@ -1,0 +1,3 @@
+export interface OutboxEvent{ id:string; topic:string; aggregateType:string; aggregateId:string; payload:Record<string,unknown>; createdAt:Date; publishedAt?:Date }
+export interface OutboxStore{ append(event:OutboxEvent):Promise<void>; pending(limit:number):Promise<OutboxEvent[]>; markPublished(id:string):Promise<void> }
+export class InMemoryOutbox implements OutboxStore{ private events=new Map<string,OutboxEvent>(); async append(e:OutboxEvent){if(!this.events.has(e.id))this.events.set(e.id,{...e})} async pending(limit:number){return[...this.events.values()].filter(e=>!e.publishedAt).sort((a,b)=>a.createdAt.getTime()-b.createdAt.getTime()).slice(0,limit)} async markPublished(id:string){const e=this.events.get(id);if(e)this.events.set(id,{...e,publishedAt:new Date()})} }
