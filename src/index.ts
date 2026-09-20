@@ -27,3 +27,8 @@ export * from "./persistence/product-pg.js";
 export * from "./persistence/order-pg.js";
 export * from "./persistence/webhook-pg.js";
 export * from "./http/rate-limit.js";
+export * from "./persistence/payment-pg.js";
+export * from "./application/payment-service.js";
+export * from "./application/payment-sync.js";
+export * from "./adapters/mercado-pago.js";
+export * from "./adapters/mercado-pago-webhook.js";
