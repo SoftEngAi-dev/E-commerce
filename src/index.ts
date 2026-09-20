@@ -60,3 +60,5 @@ export * from "./application/store-market.js";
 export * from "./application/policy-engine.js";
 export * from "./persistence/agent-runs-pg.js";
 export * from "./application/agent-approval.js";
+export * from "./ai/agent-catalog.js";
+export * from "./ai/provider-router.js";
