@@ -23,3 +23,7 @@ export * from "./persistence/postgres.js";
 export * from "./persistence/idempotency-pg.js";
 export * from "./persistence/outbox-pg.js";
 export * from "./persistence/job-queue-pg.js";
+export * from "./persistence/product-pg.js";
+export * from "./persistence/order-pg.js";
+export * from "./persistence/webhook-pg.js";
+export * from "./http/rate-limit.js";
