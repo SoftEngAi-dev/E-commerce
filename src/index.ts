@@ -66,3 +66,4 @@ export * from "./application/stores.js";
 export * from "./domain/suppliers.js";
 export * from "./application/supplier-import.js";
 export * from "./application/acquisition.js";
+export * from "./persistence/connectors-pg.js";
