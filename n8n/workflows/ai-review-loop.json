@@ -1,0 +1,11 @@
+{
+  "name":"Commerce — AI Review Loop",
+  "nodes":[
+    {"name":"Schedule","type":"n8n-nodes-base.scheduleTrigger","typeVersion":1,"position":[0,0],"parameters":{"rule":{"interval":[{"field":"hours","hoursInterval":12}]}}},
+    {"name":"Fetch Metrics","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[220,0],"parameters":{"method":"GET","url":"={{$env.COMMERCE_API_URL}}/internal/analytics/summary"}},
+    {"name":"AI Review","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[440,0],"parameters":{"method":"POST","url":"={{$env.AI_ORCHESTRATOR_URL}}/review","sendBody":true,"jsonBody":"={{$json}}"}},
+    {"name":"Risk Gate","type":"n8n-nodes-base.switch","typeVersion":3,"position":[660,0],"parameters":{"dataType":"string","value1":"={{$json.status}}","rules":[{"operation":"equal","value2":"executed"},{"operation":"equal","value2":"approval_required"}]}},
+    {"name":"Audit","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[900,0],"parameters":{"method":"POST","url":"={{$env.COMMERCE_API_URL}}/internal/audit/events","sendBody":true,"jsonBody":"={{$json}}"}}
+  ],
+  "connections":{"Schedule":{"main":[[{"node":"Fetch Metrics","type":"main","index":0}]]},"Fetch Metrics":{"main":[[{"node":"AI Review","type":"main","index":0}]]},"AI Review":{"main":[[{"node":"Risk Gate","type":"main","index":0}]]},"Risk Gate":{"main":[[{"node":"Audit","type":"main","index":0}],[{"node":"Audit","type":"main","index":0}]]}}
+}
