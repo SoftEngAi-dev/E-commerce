@@ -12,6 +12,7 @@ import { getOperationalSummary, getProductPerformance } from "../application/ana
 import { getMarketPolicy, isCategoryAllowed, isChannelAllowedForMarket } from "../application/market-policy.js";
 import { PostgresAuditSink } from "../persistence/audit-pg.js";
 import { listPendingAgentRuns } from "../persistence/agent-runs-pg.js";
+import { approveAgentRun,rejectAgentRun } from "../application/agent-approval.js";
 import { getStoreBySlug } from "../persistence/store-pg.js";
 import { reviewWithAI } from "../application/ai-review.js";
 import { createOrder, getOrder, getOrderVersion, transitionPersistedOrder, upsertCustomer } from "../persistence/order-pg.js";
@@ -279,6 +280,27 @@ export function createCommerceServer(config:AppConfig,db:PostgresDatabase,deps:{
         }
 
         return json(res,404,{error:"Internal route not found"},requestId);
+      }
+
+      if(req.method==="POST"&&url.pathname.startsWith("/admin/ai/runs/")){
+        const key=req.headers["x-admin-api-key"];
+        const principal=authenticateApiKey(typeof key==="string"?key:undefined,config.ADMIN_API_KEY);
+        if(!principal)return json(res,401,{error:"Unauthorized"},requestId);
+
+        const suffix=url.pathname.slice("/admin/ai/runs/".length);
+        const parts=suffix.split("/");
+        const runId=parts[0];
+        const action=parts[1];
+        if(!runId||!["approve","reject"].includes(action))return json(res,404,{error:"AI approval route not found"},requestId);
+
+        if(action==="approve"){
+          const result=await approveAgentRun(db,runId,principal.actorId);
+          return json(res,200,{run:result},requestId);
+        }
+
+        const body=z.object({reason:z.string().min(1).max(2000)}).parse(parseJson(await readBody(req)));
+        const result=await rejectAgentRun(db,runId,principal.actorId,body.reason);
+        return json(res,200,{run:result},requestId);
       }
 
       if(req.method==="GET"&&url.pathname==="/admin/ping"){
