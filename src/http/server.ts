@@ -25,6 +25,7 @@ import { MercadoPagoCheckoutProProvider } from "../adapters/mercado-pago.js";
 const checkoutSchema=z.object({
   lines:z.array(z.object({productId:z.string().uuid(),quantity:z.number().int().positive().max(99)})).min(1).max(50)
 });
+const quoteSchema=checkoutSchema.extend({storeSlug:z.string().min(1).max(100).optional()});
 const orderSchema=checkoutSchema.extend({
   email:z.string().email().max(320),
   country:z.string().length(2),
@@ -95,7 +96,7 @@ export function createCommerceServer(config:AppConfig,db:PostgresDatabase,deps:{
       }
 
       if(req.method==="POST"&&url.pathname==="/api/quote"){
-        const parsed=checkoutSchema.parse(parseJson(await readBody(req)));
+        const parsed=quoteSchema.parse(parseJson(await readBody(req)));
         const lines:Array<Record<string,unknown>>=[];let total=0;let margin=0;let currency:string|undefined;
         for(const line of parsed.lines){
           const storeSlug=parsed.storeSlug;
