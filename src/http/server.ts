@@ -27,7 +27,7 @@ import { MercadoPagoCheckoutProProvider } from "../adapters/mercado-pago.js";
 const checkoutSchema=z.object({
   lines:z.array(z.object({productId:z.string().uuid(),quantity:z.number().int().positive().max(99)})).min(1).max(50)
 });
-const quoteSchema=checkoutSchema.extend({storeSlug:z.string().min(1).max(100).optional()});
+const quoteSchema=checkoutSchema.extend({storeSlug:z.string().min(1).max(100).optional(),country:z.string().length(2).optional(),postalCode:z.string().max(20).optional()});
 const orderSchema=checkoutSchema.extend({
   email:z.string().email().max(320),
   country:z.string().length(2),
@@ -99,7 +99,7 @@ export function createCommerceServer(config:AppConfig,db:PostgresDatabase,deps:{
 
       if(req.method==="POST"&&url.pathname==="/api/quote"){
         const parsed=quoteSchema.parse(parseJson(await readBody(req)));
-        const priced=await priceCart(db,parsed.lines,{storeSlug:parsed.storeSlug, taxProvider:deps.taxProvider});
+        const priced=await priceCart(db,parsed.lines,{storeSlug:parsed.storeSlug,country:parsed.country,postalCode:parsed.postalCode,taxProvider:deps.taxProvider});
         return json(res,200,{currency:priced.currency,subtotal:priced.subtotal,tax:priced.tax,total:priced.total,taxRate:priced.taxRate,taxJurisdiction:priced.taxJurisdiction,grossMarginRate:priced.grossMarginRate,lines:priced.lines},requestId);
       }
 
