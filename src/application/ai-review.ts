@@ -5,7 +5,7 @@ import { runAgent } from "../ai/agent-runtime.js";
 import { requiresApproval } from "./risk-gate.js";
 
 const proposalSchema=z.object({action:z.string().min(1).max(200),risk:z.enum(["low","medium","high","critical"]),evidence:z.array(z.string()).min(1),reason:z.string().min(1).max(2000)});
-function extractJson(text:string){const fenced=text.match(/```json\\s*([\\s\\S]*?)\\s*```/i);return JSON.parse(fenced?fenced[1]:text)}
+function extractJson(text:string){const fenced=text.match(/```json\\s*([\\s\\S]*?)\\s*```/i);return JSON.parse(fenced?.[1]??text)}
 
 export async function reviewWithAI(db:PostgresDatabase,input:{metrics:Record<string,unknown>;agent?:string;system?:string},config:{id:string;baseUrl:string;model:string;token?:string}){
   const provider=new OpenAICompatibleAIProvider({id:config.id,baseUrl:config.baseUrl,model:config.model,token:config.token});
