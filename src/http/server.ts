@@ -131,7 +131,7 @@ export function createCommerceServer(config:AppConfig,db:PostgresDatabase,deps:{
         const signature=req.headers["x-signature"];
         const mpRequestId=req.headers["x-request-id"];
         const dataId=url.searchParams.get("data.id")??undefined;
-        if(typeof signature!=="string"||typeof mpRequestId!=="string"||!verifyMercadoPagoSignature({signature,requestId:mpRequestId,dataId,secret:config.WEBHOOK_SECRET})){
+        if(typeof signature!=="string"||typeof mpRequestId!=="string"||!verifyMercadoPagoSignature({signature,requestId:mpRequestId,dataId,secret:config.MERCADO_PAGO_WEBHOOK_SECRET!})){
           return json(res,401,{error:"Invalid Mercado Pago signature"},requestId);
         }
         const eventId="mp:"+mpRequestId+":"+dataId;
