@@ -1,0 +1,3 @@
+import test from"node:test";import assert from"node:assert/strict";import{importSupplierPage,canExecute}from"../src/index.js";
+test("supplier import rejects unverified automated permissions",async()=>{const db={};const supplier={id:"s",policy:{dropshippingAllowed:false},listProducts:async()=>({items:[]})};await assert.rejects(()=>importSupplierPage(db as never,supplier as never,{market:"UY",channel:"store",signalProvider:async()=>({demand:0,margin:0,competition:0,supplier:0,shipping:0,risk:0,trend:0})}),/not explicitly authorized/)});
+test("connector layer remains behind domain policy",()=>{assert.equal(canExecute({action:"catalog.enrich",risk:"low",evidence:["feed"]},{allowLowMedium:true,requireEvidence:true}),true)});

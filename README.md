@@ -4,12 +4,15 @@ Modular commerce core for international dropshipping, multi-provider commerce an
 
 ## Current release
 
-**v1.8 commerce + autonomy foundation**
+**v1.9 production connectors + autonomy foundation**
 
 - TypeScript domain core with deterministic pricing and order state machine
 - PostgreSQL persistence, idempotency, outbox and durable jobs
 - Inventory reservation, expiry, retries and worker recovery
 - Provider-neutral payments and fulfillment
+- Authorized supplier connector contracts and automated import
+- Acquisition-channel contracts and publication state
+- Support AI/content generation and acquisition attribution
 - Mercado Pago Orders API adapter
 - Verified webhook processing with durable synchronization jobs
 - Fulfillment and tracking workers
@@ -41,9 +44,9 @@ See `docs/SETUP.md` or run `scripts/start-dev.ps1` on Windows.
 
 ## Roadmap
 
-- Production supplier connectors and authorization verification
+- Connect authorized supplier APIs/feeds
 - Real tax/FX provider implementations per market
-- Operator identity and approval UI
+- Production operator identity and approval UI
 - Acquisition-channel adapters and attribution
 - Conversion/cohort analytics
 - Backup/disaster recovery
