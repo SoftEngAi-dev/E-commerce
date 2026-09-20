@@ -21,7 +21,7 @@ export class JsonFeedProductSource implements ProductSource{
     if(!r.ok)throw new Error("Supplier feed failed: "+r.status);
     const raw=await r.json() as unknown;
     const rows=z.array(itemSchema).parse(raw);
-    const items:NormalizedProduct[]=rows.map(x=>({...x,source:this.id}));
+    const items:NormalizedProduct[]=rows.map(x=>({externalId:x.id,title:x.title,description:x.description,currency:x.currency,cost:x.cost,stock:x.stock,imageUrls:x.imageUrls,category:x.category,source:this.id}));
     return{items};
   }
 }
