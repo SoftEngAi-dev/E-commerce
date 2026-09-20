@@ -1,0 +1,2 @@
+import test from"node:test";import assert from"node:assert/strict";import{buildCheckout}from"../src/application/checkout.js";
+test("checkout prices on the server and reserves stock",()=>{const r=buildCheckout({orderId:"o1",currency:"USD",feeRate:.05,targetMarginRate:.30,lines:[{sku:"A",unitCost:50,shippingCost:10,quantity:2}]},[{sku:"A",available:5,reserved:0}]);assert.equal(r.state,"paid");assert.equal(r.reservations[0]?.available,3);assert.ok(r.total>0)});
